@@ -1,0 +1,9 @@
+.env
+.env.local
+.env.production
+*.secret
+.wrangler/
+node_modules/
+.DS_Store
+Thumbs.db
+*.log
