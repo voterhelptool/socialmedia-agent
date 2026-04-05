@@ -1,0 +1,20 @@
+name = "northstar-agent"
+main = "src/index.js"
+compatibility_date = "2024-01-01"
+
+[[kv_namespaces]]
+binding = "KV"
+id = "b8865b389f994e0bb857dcf99f94bacd"
+
+[triggers]
+crons = ["0 16 * * *"]
+
+# Secrets set via Cloudflare dashboard ONLY - NEVER here
+# Required secrets:
+# BLUESKY_HANDLE
+# BLUESKY_APP_PASSWORD
+# CLAUDE_API_KEY
+# FB_PAGE_ACCESS_TOKEN
+# FB_PAGE_ID
+# LINKEDIN_ACCESS_TOKEN
+# YOUTUBE_API_KEY
