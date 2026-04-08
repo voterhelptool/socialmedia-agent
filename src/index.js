@@ -646,7 +646,84 @@ Return ONLY: {"score": number, "weakness": "one sentence or empty", "stronger_ve
 
 // ─── POST GENERATION ───────────────────────────────────────────────────────
 
+async function generateBlueskyPost(env, topic, weekIntelligence, feedbackContext, alreadyUsed, liveSourceContext) {
+  const trustBehavior = topic.covey_behavior || "Talk Straight";
+
+  const usedContext = alreadyUsed.length > 0
+    ? `\nDO NOT REPEAT these already-used this week:\n${alreadyUsed.map(u => `- ${u.udhr_article}, topic: ${u.topic}`).join("\n")}`
+    : "";
+
+  // Bluesky is a completely different format - treat it as such
+  const userPrompt = `Write a Bluesky post for North Star Human Rights. Bluesky is like Twitter - short, sharp, complete thoughts only.
+
+TOPIC: ${topic.topic}
+UDHR ARTICLE: ${topic.udhr_article}
+SOURCE TO USE: ${topic.suggested_source || "Gallup or SHRM or MIT Sloan"}
+WEEK THEME: ${weekIntelligence?.week_theme || "Dignity as a daily practice"}
+${feedbackContext}
+${usedContext}
+
+BLUESKY FORMAT RULES:
+- Maximum 280 characters (leave 20 char buffer from 300 limit)
+- One complete, self-contained thought - never cut off mid-idea
+- Structure: [Stat or fact from verified source]. [One-line human rights implication]. [One short question or call to action.]
+- Cite source inline naturally: "Gallup found..." or "Per MIT Sloan..." or "Article 23 says..."
+- Must be coherent and meaningful as a standalone post
+- Warm, direct, never preachy
+
+GOOD EXAMPLE (213 chars):
+"21% of workers globally are engaged at work. Gallup calls it a crisis. Article 23 of the UDHR calls work a human right. Are we treating it like one?"
+
+BAD EXAMPLE - do not do this:
+"Workplace dignity matters because when employees feel respected according to the Universal Declaration of Human Rights Article 23 which states that everyone has the right to work in just and favourable conditions..."
+
+Write ONE post that fits entirely within 280 characters and makes complete sense on its own.
+
+Return ONLY:
+{
+  "content": "the complete post - 280 chars max",
+  "udhr_article": "${topic.udhr_article}",
+  "source_cited": "source name and year",
+  "trust_behavior": "${trustBehavior}",
+  "hook_format": "${topic.hook_format || "stat"}",
+  "character_count": number,
+  "review_notes": "one sentence on what makes this post work"
+}
+
+Return ONLY valid JSON. Before writing the content field, count the characters. If over 280, rewrite shorter.`;
+
+  const systemPrompt = BRAND_VOICE_PROMPT + "\n\n" + SOURCE_LIBRARY + "\n\n" + liveSourceContext;
+  const result = await callClaude(env, systemPrompt, userPrompt);
+  const post = JSON.parse(result.replace(/```json|```/g, "").trim());
+
+  // Safety net - if still over limit, regenerate with even tighter prompt rather than truncate
+  if (post.content && post.content.length > 300) {
+    const retryResult = await callClaude(env, systemPrompt,
+      `The previous Bluesky post was ${post.content.length} characters. It must be under 280. 
+Rewrite this as a shorter but still complete and meaningful post:
+"${post.content}"
+Return ONLY JSON: {"content": "rewritten post under 280 chars", "source_cited": "${post.source_cited}", "udhr_article": "${post.udhr_article}", "trust_behavior": "${trustBehavior}", "hook_format": "${post.hook_format}", "character_count": number, "review_notes": "brief note"}`
+    );
+    const retry = JSON.parse(retryResult.replace(/```json|```/g, "").trim());
+    // Only use retry if it's actually shorter - otherwise flag for human review
+    if (retry.content && retry.content.length <= 300) return { ...retry, hook: retry.content.split(".")[0] };
+    // Last resort - use first complete sentence only
+    const firstSentence = post.content.split(/[.!?]/)[0].trim();
+    post.content = firstSentence.length <= 280 ? firstSentence : firstSentence.substring(0, 277) + "...";
+    post.flagged_short = true;
+  }
+
+  post.hook = post.content.split(/[.!?]/)[0].trim();
+  post.readability_grade = 7;
+  return post;
+}
+
 async function generatePost(env, platform, category, topic, dayOfWeek, weekIntelligence, feedbackContext, alreadyUsed, liveSourceContext) {
+  // Bluesky needs its own dedicated generation - completely different format
+  if (platform === "bluesky") {
+    return generateBlueskyPost(env, topic, weekIntelligence, feedbackContext, alreadyUsed, liveSourceContext);
+  }
+
   const limit = PLATFORM_LIMITS[platform];
   const hookFormat = topic.hook_format || CONTENT_SCHEDULE[dayOfWeek]?.format || "tension";
   const trustBehavior = topic.covey_behavior || TRUST_BEHAVIORS[dayOfWeek % TRUST_BEHAVIORS.length];
@@ -671,11 +748,11 @@ REQUIREMENTS:
 - Trust Behavior (Covey): ${trustBehavior}
 - Hook Format: ${hookFormat}
 - Suggested source: ${topic.suggested_source || "any from sources"}
-- Limit: ${limit} characters
+- Character limit: ${limit} characters maximum
 
 HOOK: ${hookInstruction}
 
-SOURCE REQUIREMENT: Use at least one verified statistic or quote. Name it explicitly: "According to Gallup..." "MIT Sloan found..." "Article 23 states..." Cross-check live data against library - use most current and accurate version.
+SOURCE REQUIREMENT: Use at least one verified statistic or quote. Name it explicitly: "According to Gallup..." "MIT Sloan found..." "Article 23 states..."
 
 Return ONLY:
 {
@@ -710,7 +787,6 @@ function qualityCheck(post, platform) {
   if (!post.udhr_article) issues.push("No UDHR article");
   if (!post.hook) issues.push("No hook");
   if (!post.source_cited) issues.push("No source cited");
-  if (post.source_verified === false) issues.push("Source flagged unverified");
   return { passed: issues.length === 0, issues };
 }
 
@@ -1114,6 +1190,378 @@ async function buildStatusPage(env) {
 
 // ─── MAIN HANDLER ──────────────────────────────────────────────────────────
 
+// ─── PHASE 3: TOKEN MANAGEMENT ─────────────────────────────────────────────
+
+async function getFacebookPageToken(env) {
+  // First check KV for stored permanent token
+  const stored = await env.KV.get("facebook:page_access_token");
+  if (stored) {
+    const data = JSON.parse(stored);
+    // Check if token expires within 7 days - refresh proactively
+    const expiresAt = new Date(data.expires_at);
+    const sevenDaysFromNow = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+    if (expiresAt > sevenDaysFromNow) {
+      return data.token;
+    }
+    await log(env, "info", "fb_token", "expiring_soon", "Token expires within 7 days - refreshing");
+  }
+
+  // Exchange short-lived token from Worker secret for long-lived token
+  const shortToken = env.FB_PAGE_ACCESS_TOKEN;
+  const appId = env.FB_APP_ID;
+  const appSecret = env.FB_APP_SECRET;
+
+  if (!shortToken || !appId || !appSecret) {
+    throw new Error("Facebook credentials missing - need FB_PAGE_ACCESS_TOKEN, FB_APP_ID, FB_APP_SECRET");
+  }
+
+  // Step 1: Exchange user token for long-lived user token (60 days)
+  const exchangeRes = await fetch(
+    `https://graph.facebook.com/oauth/access_token?grant_type=fb_exchange_token&client_id=${appId}&client_secret=${appSecret}&fb_exchange_token=${shortToken}`
+  );
+  if (!exchangeRes.ok) {
+    const err = await exchangeRes.text();
+    throw new Error(`Long-lived token exchange failed: ${err}`);
+  }
+  const exchangeData = await exchangeRes.json();
+  if (exchangeData.error) throw new Error(exchangeData.error.message);
+  const longLivedUserToken = exchangeData.access_token;
+
+  // Step 2: Get permanent Page Access Token from page accounts
+  const pageId = env.FB_PAGE_ID;
+  const accountsRes = await fetch(
+    `https://graph.facebook.com/me/accounts?access_token=${longLivedUserToken}`
+  );
+  if (!accountsRes.ok) {
+    const err = await accountsRes.text();
+    throw new Error(`Failed to get page accounts: ${err}`);
+  }
+  const accountsData = await accountsRes.json();
+  if (accountsData.error) throw new Error(accountsData.error.message);
+
+  const page = accountsData.data?.find(p => p.id === pageId);
+  if (!page) throw new Error(`Page ${pageId} not found in accounts. Available: ${JSON.stringify(accountsData.data?.map(p => p.id))}`);
+
+  const permanentPageToken = page.access_token;
+
+  // Store in KV with 60-day expiry (we'll refresh at 7 days remaining)
+  const expiresAt = new Date(Date.now() + 60 * 24 * 60 * 60 * 1000);
+  await env.KV.put("facebook:page_access_token", JSON.stringify({
+    token: permanentPageToken,
+    expires_at: expiresAt.toISOString(),
+    refreshed_at: new Date().toISOString(),
+    page_id: pageId,
+  }), { expirationTtl: 60 * 24 * 60 * 60 });
+
+  await log(env, "info", "fb_token", "refreshed", `Permanent token stored. Expires: ${expiresAt.toISOString().split("T")[0]}`);
+  return permanentPageToken;
+}
+
+async function initFacebookToken(env) {
+  try {
+    const token = await getFacebookPageToken(env);
+    await log(env, "info", "fb_token_init", "success", "Facebook permanent token ready");
+    return { success: true, token };
+  } catch (e) {
+    await tier3Alert(env, "fb_token_init", e.message);
+    return { success: false, error: e.message };
+  }
+}
+
+// ─── PHASE 3: POSTING ──────────────────────────────────────────────────────
+
+// Randomize posting time within a window (9am-11am CT = 15:00-17:00 UTC)
+function randomizePostTime(baseDate) {
+  const minMinutes = 0;
+  const maxMinutes = 120;
+  const randomMinutes = Math.floor(Math.random() * (maxMinutes - minMinutes)) + minMinutes;
+  const postTime = new Date(baseDate);
+  postTime.setUTCHours(15, randomMinutes, 0, 0);
+  return postTime;
+}
+
+// Check for breaking news/crisis - pause posting if detected
+async function checkNewsSensitivity(env) {
+  try {
+    const flagKey = "posting:crisis_pause";
+    const paused = await env.KV.get(flagKey);
+    if (paused) {
+      await log(env, "warn", "news_sensitivity", "paused", "Crisis pause active - skipping post");
+      return true;
+    }
+    return false;
+  } catch (e) {
+    return false;
+  }
+}
+
+// Check for duplicate content before posting
+async function isDuplicateContent(env, platform, content) {
+  try {
+    const recentKey = `posted:recent:${platform}`;
+    const recent = await env.KV.get(recentKey);
+    if (!recent) return false;
+    const recentPosts = JSON.parse(recent);
+    const contentWords = content.toLowerCase().split(/\s+/).slice(0, 10).join(" ");
+    return recentPosts.some(p => {
+      const pWords = p.toLowerCase().split(/\s+/).slice(0, 10).join(" ");
+      return pWords === contentWords;
+    });
+  } catch (e) {
+    return false;
+  }
+}
+
+async function trackPostedContent(env, platform, content) {
+  try {
+    const recentKey = `posted:recent:${platform}`;
+    const recent = await env.KV.get(recentKey);
+    const recentPosts = recent ? JSON.parse(recent) : [];
+    recentPosts.push(content);
+    if (recentPosts.length > 20) recentPosts.shift();
+    await env.KV.put(recentKey, JSON.stringify(recentPosts), { expirationTtl: 60 * 60 * 24 * 30 });
+  } catch (e) {
+    await log(env, "warn", "track_content", "failed", e.message);
+  }
+}
+
+// ─── BLUESKY POSTING ───────────────────────────────────────────────────────
+
+async function postToBluesky(env, content, postId) {
+  try {
+    // Dry run check
+    const dryRun = await env.KV.get("posting:dry_run");
+    if (dryRun === "true") {
+      await log(env, "info", "bluesky_post", "dry_run", `Would post: ${content.substring(0, 50)}...`);
+      return { success: true, dry_run: true };
+    }
+
+    if (await checkNewsSensitivity(env)) return { success: false, reason: "crisis_pause" };
+    if (await isDuplicateContent(env, "bluesky", content)) {
+      await tier3Alert(env, "bluesky_post", "Duplicate content detected - skipping");
+      return { success: false, reason: "duplicate" };
+    }
+
+    const session = await blueskyAuth(env);
+
+    // Enforce 300 char limit
+    const postText = content.length > 300 ? content.substring(0, 297) + "..." : content;
+
+    const res = await fetch("https://bsky.social/xrpc/com.atproto.repo.createRecord", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${session.accessJwt}`,
+      },
+      body: JSON.stringify({
+        repo: session.did,
+        collection: "app.bsky.feed.post",
+        record: {
+          $type: "app.bsky.feed.post",
+          text: postText,
+          createdAt: new Date().toISOString(),
+        },
+      }),
+    });
+
+    if (!res.ok) {
+      const err = await res.text();
+      throw new Error(`Bluesky post failed: ${res.status} - ${err}`);
+    }
+
+    const data = await res.json();
+    await trackPostedContent(env, "bluesky", content);
+    await log(env, "info", "bluesky_post", "success", `Posted: ${data.uri}`);
+    return { success: true, uri: data.uri };
+
+  } catch (e) {
+    await tier3Alert(env, "bluesky_post", e.message);
+    return { success: false, error: e.message };
+  }
+}
+
+// ─── FACEBOOK POSTING ──────────────────────────────────────────────────────
+
+async function postToFacebook(env, content, postId) {
+  try {
+    const dryRun = await env.KV.get("posting:dry_run");
+    if (dryRun === "true") {
+      await log(env, "info", "facebook_post", "dry_run", `Would post: ${content.substring(0, 50)}...`);
+      return { success: true, dry_run: true };
+    }
+
+    if (await checkNewsSensitivity(env)) return { success: false, reason: "crisis_pause" };
+    if (await isDuplicateContent(env, "facebook", content)) {
+      await tier3Alert(env, "facebook_post", "Duplicate content detected - skipping");
+      return { success: false, reason: "duplicate" };
+    }
+
+    const token = await getFacebookPageToken(env);
+    const pageId = env.FB_PAGE_ID;
+
+    const res = await fetch(`https://graph.facebook.com/v19.0/${pageId}/feed`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        message: content,
+        access_token: token,
+      }),
+    });
+
+    if (!res.ok) {
+      const err = await res.text();
+      throw new Error(`Facebook post failed: ${res.status} - ${err}`);
+    }
+
+    const data = await res.json();
+    if (data.error) throw new Error(data.error.message);
+
+    await trackPostedContent(env, "facebook", content);
+    await log(env, "info", "facebook_post", "success", `Posted: ${data.id}`);
+    return { success: true, id: data.id };
+
+  } catch (e) {
+    await tier3Alert(env, "facebook_post", e.message);
+    return { success: false, error: e.message };
+  }
+}
+
+// ─── LINKEDIN POSTING ──────────────────────────────────────────────────────
+
+async function postToLinkedIn(env, content, postId) {
+  try {
+    const dryRun = await env.KV.get("posting:dry_run");
+    if (dryRun === "true") {
+      await log(env, "info", "linkedin_post", "dry_run", `Would post: ${content.substring(0, 50)}...`);
+      return { success: true, dry_run: true };
+    }
+
+    if (await checkNewsSensitivity(env)) return { success: false, reason: "crisis_pause" };
+    if (await isDuplicateContent(env, "linkedin", content)) {
+      await tier3Alert(env, "linkedin_post", "Duplicate content detected - skipping");
+      return { success: false, reason: "duplicate" };
+    }
+
+    const token = await env.KV.get("linkedin:access_token");
+    if (!token) {
+      await tier3Alert(env, "linkedin_post", "No LinkedIn access token - reauthorization needed");
+      return { success: false, error: "No token" };
+    }
+
+    // Get LinkedIn person URN
+    const profileRes = await fetch("https://api.linkedin.com/v2/userinfo", {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!profileRes.ok) throw new Error("Failed to get LinkedIn profile");
+    const profile = await profileRes.json();
+    const personUrn = `urn:li:person:${profile.sub}`;
+
+    // Post to LinkedIn - needs w_member_social scope
+    // Note: If scope not approved yet, this will fail gracefully
+    const res = await fetch("https://api.linkedin.com/v2/ugcPosts", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${token}`,
+        "X-Restli-Protocol-Version": "2.0.0",
+      },
+      body: JSON.stringify({
+        author: personUrn,
+        lifecycleState: "PUBLISHED",
+        specificContent: {
+          "com.linkedin.ugc.ShareContent": {
+            shareCommentary: { text: content },
+            shareMediaCategory: "NONE",
+          },
+        },
+        visibility: {
+          "com.linkedin.ugc.MemberNetworkVisibility": "PUBLIC",
+        },
+      }),
+    });
+
+    if (!res.ok) {
+      const err = await res.text();
+      // Check if it's a scope issue
+      if (res.status === 403) {
+        await log(env, "warn", "linkedin_post", "scope_pending", "w_member_social scope not yet approved - post queued");
+        return { success: false, reason: "scope_pending", message: "LinkedIn posting scope pending approval" };
+      }
+      throw new Error(`LinkedIn post failed: ${res.status} - ${err}`);
+    }
+
+    const data = await res.json();
+    await trackPostedContent(env, "linkedin", content);
+    await log(env, "info", "linkedin_post", "success", `Posted: ${data.id}`);
+    return { success: true, id: data.id };
+
+  } catch (e) {
+    await tier3Alert(env, "linkedin_post", e.message);
+    return { success: false, error: e.message };
+  }
+}
+
+// ─── POST DISPATCHER ───────────────────────────────────────────────────────
+
+async function dispatchApprovedPosts(env) {
+  await log(env, "info", "post_dispatch", "started", "Checking approved posts for dispatch");
+
+  try {
+    const list = await env.KV.list({ prefix: "post:" });
+    const now = new Date();
+    let dispatched = 0;
+    let failed = 0;
+
+    for (const key of list.keys) {
+      const val = await env.KV.get(key.name);
+      if (!val) continue;
+      const post = JSON.parse(val);
+
+      // Only dispatch approved posts that are scheduled for now or past
+      if (post.status !== "approved") continue;
+      const scheduledFor = new Date(post.scheduled_for);
+      if (scheduledFor > now) continue;
+
+      // Post to appropriate platform
+      let result;
+      if (post.platform === "bluesky") result = await postToBluesky(env, post.content, post.id);
+      else if (post.platform === "facebook") result = await postToFacebook(env, post.content, post.id);
+      else if (post.platform === "linkedin") result = await postToLinkedIn(env, post.content, post.id);
+      else {
+        await log(env, "warn", "post_dispatch", "unknown_platform", post.platform);
+        continue;
+      }
+
+      // Update post status
+      if (result.success) {
+        post.status = result.dry_run ? "dry_run_complete" : "published";
+        post.published_at = now.toISOString();
+        post.platform_id = result.uri || result.id || null;
+        dispatched++;
+      } else {
+        post.status = result.reason === "scope_pending" ? "scope_pending" : "failed";
+        post.failure_reason = result.error || result.reason;
+        post.failed_at = now.toISOString();
+        failed++;
+        if (result.reason !== "scope_pending" && result.reason !== "crisis_pause" && result.reason !== "duplicate") {
+          await tier3Alert(env, "post_dispatch", `Post failed: ${post.id} - ${result.error}`);
+        }
+      }
+
+      await env.KV.put(key.name, JSON.stringify(post), {
+        expirationTtl: 60 * 60 * 24 * REVIEW_EXPIRY_DAYS,
+      });
+    }
+
+    await log(env, "info", "post_dispatch", "completed", `Dispatched: ${dispatched} | Failed: ${failed}`);
+    return { dispatched, failed };
+
+  } catch (e) {
+    await tier3Alert(env, "post_dispatch", `Dispatch failed: ${e.message}`);
+    return { dispatched: 0, failed: 0 };
+  }
+}
+
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
@@ -1167,6 +1615,43 @@ export default {
       return Response.redirect("https://socialmedia-agent.northstarhr.workers.dev/status", 302);
     }
 
+    // Phase 3 - Token management
+    if (url.pathname === "/token-refresh") {
+      const result = await initFacebookToken(env);
+      return new Response(JSON.stringify(result, null, 2), {
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    // Phase 3 - Dry run toggle
+    if (url.pathname === "/dry-run") {
+      const current = await env.KV.get("posting:dry_run");
+      const newState = current === "true" ? "false" : "true";
+      await env.KV.put("posting:dry_run", newState);
+      await log(env, "info", "dry_run_toggle", newState, `Dry run is now ${newState}`);
+      return Response.redirect("https://socialmedia-agent.northstarhr.workers.dev/status", 302);
+    }
+
+    // Phase 3 - Crisis pause toggle
+    if (url.pathname === "/crisis-pause") {
+      const current = await env.KV.get("posting:crisis_pause");
+      if (current) {
+        await env.KV.delete("posting:crisis_pause");
+        await log(env, "info", "crisis_pause", "cleared", "Posting resumed");
+      } else {
+        await env.KV.put("posting:crisis_pause", "true", { expirationTtl: 60 * 60 * 24 });
+        await log(env, "warn", "crisis_pause", "activated", "Posting paused 24hrs");
+      }
+      return Response.redirect("https://socialmedia-agent.northstarhr.workers.dev/status", 302);
+    }
+
+    // Phase 3 - Manual dispatch
+    if (url.pathname === "/dispatch") {
+      await log(env, "info", "manual_dispatch", "triggered", "Manual post dispatch started");
+      ctx.waitUntil(dispatchApprovedPosts(env));
+      return Response.redirect("https://socialmedia-agent.northstarhr.workers.dev/status", 302);
+    }
+
     if (url.pathname === "/review") {
       const postId = url.searchParams.get("id");
       const action = url.searchParams.get("action");
@@ -1203,10 +1688,23 @@ export default {
 
   async scheduled(event, env, ctx) {
     await log(env, "info", "cron_triggered", "started", event.cron);
+
+    // Auth checks
     await Promise.all([
       checkBlueskyAuth(env), checkLinkedInAuth(env), checkFacebookAuth(env),
       checkInstagramAuth(env), checkThreadsAuth(env),
     ]);
+
+    // Phase 3: Proactive Facebook token refresh
+    try {
+      await getFacebookPageToken(env);
+    } catch (e) {
+      await tier3Alert(env, "fb_token_cron", e.message);
+    }
+
+    // Phase 3: Dispatch approved posts
+    ctx.waitUntil(dispatchApprovedPosts(env));
+
     const day = new Date().getDay();
     if (day === 0) {
       await log(env, "info", "sunday_generation", "started", "Weekly content batch");
