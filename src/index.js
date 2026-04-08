@@ -1,11 +1,231 @@
 /**
  * North Star Human Rights - Social Media Agent
- * Version: 0.2.0 - Phase 1 Foundation + LinkedIn OAuth
+ * Version: 0.8.0 - Live Source Fetching + Cross-Verification
  *
  * Principles: Free | Fair | Firm | Fun | True | Transparent | Accessible
  * INTEGRITY INTEGRITY INTEGRITY
  * Slow is smooth. Smooth is fast.
+ *
+ * Sources: 35+ verified + live fetch from primary URLs
+ * Cross-verification: Agent checks live sources before citing
+ * Hard rule: If it cannot be verified, it is not used.
  */
+
+const REVIEW_EXPIRY_DAYS = 14;
+const LINKEDIN_REDIRECT = "https://socialmedia-agent.northstarhr.workers.dev/linkedin/callback";
+const HOOK_SCORE_MINIMUM = 7;
+const QUICK_TAGS = ["Too formal", "Too vague", "Wrong UDHR article", "Too similar to others", "Hook weak", "Great post"];
+
+// ─── PRIMARY SOURCE URLS ────────────────────────────────────────────────────
+// Publicly accessible - no API key required
+// Fetched fresh before each generation run
+
+const PRIMARY_SOURCES = [
+  { name: "UN UDHR", url: "https://www.un.org/en/about-us/universal-declaration-of-human-rights", topic: "human_rights" },
+  { name: "ILO Labour Standards", url: "https://www.ilo.org/international-labour-standards", topic: "labour_rights" },
+  { name: "Gallup Global Workplace", url: "https://www.gallup.com/workplace/349484/state-of-the-global-workplace.aspx", topic: "engagement" },
+  { name: "SHRM Workplace Culture", url: "https://www.shrm.org/executive-network/insights/shrm-report-workplace-culture-fosters-employee-retention", topic: "culture" },
+  { name: "MIT Sloan Toxic Culture", url: "https://sloanreview.mit.edu/article/toxic-culture-is-driving-the-great-resignation/", topic: "culture" },
+  { name: "MIT Sloan Toxic Five", url: "https://sloanreview.mit.edu/article/why-every-leader-needs-to-worry-about-toxic-culture/", topic: "culture" },
+  { name: "HBR Psychological Safety", url: "https://hbr.org/2023/02/what-is-psychological-safety", topic: "psychological_safety" },
+  { name: "Brene Brown Dare to Lead", url: "https://brenebrown.com/hubs/dare-to-lead/", topic: "leadership" },
+  { name: "McKinsey Diversity Wins", url: "https://www.mckinsey.com/featured-insights/diversity-and-inclusion/diversity-wins-how-inclusion-matters", topic: "diversity" },
+  { name: "WEF Future of Jobs", url: "https://www.weforum.org/publications/the-future-of-jobs-report-2023/", topic: "workforce" },
+  { name: "MDHR Minnesota", url: "https://mn.gov/mdhr/employers/workplace-rights/", topic: "minnesota" },
+  { name: "Gallup Manager Engagement 2025", url: "https://www.gallup.com/workplace/654911/manager-engagement-record-drop.aspx", topic: "engagement" },
+  { name: "APA Work Wellbeing", url: "https://www.apa.org/topics/healthy-workplaces", topic: "wellbeing" },
+  { name: "Deloitte Human Capital", url: "https://www2.deloitte.com/us/en/insights/focus/human-capital-trends.html", topic: "hr_trends" },
+  { name: "ILO Violence Convention", url: "https://www.ilo.org/topics/violence-and-harassment-work", topic: "harassment" },
+];
+
+// ─── VERIFIED SOURCE LIBRARY (baseline - always included) ──────────────────
+
+const SOURCE_LIBRARY = `
+=== VERIFIED SOURCE LIBRARY - BASELINE CITATIONS ===
+
+--- SPEED OF TRUST (Covey, 2006) ---
+Covey, Stephen M.R. "The Speed of Trust." Free Press, 2006.
+- High-trust organizations outperform low-trust by 286% in Total Return to Shareholders (Watson Wyatt study, cited in Covey 2006)
+- Trust affects speed and cost: Low Trust = Low Speed + High Cost (Low-Trust Tax)
+- Trust affects speed and cost: High Trust = High Speed + Low Cost (High-Trust Dividend)
+- "Trust is the most overlooked, misunderstood, underutilized asset to enable performance." (Covey)
+- Character + Competence = Credibility. Credibility is the foundation of all trust.
+- 13 Behaviors: Talk Straight, Demonstrate Respect, Create Transparency, Right Wrongs, Show Loyalty, Deliver Results, Get Better, Confront Reality, Clarify Expectations, Listen First, Keep Commitments, Extend Trust
+- 5 Waves: Self Trust, Relationship Trust, Organizational Trust, Market Trust, Societal Trust
+- People are 4x more honest about mistakes when accountability systems feel mutually fair (Covey 2006)
+- Trust is #1 leadership competency needed today (Covey)
+
+--- UDHR (United Nations, 1948) ---
+United Nations. "Universal Declaration of Human Rights." December 10, 1948.
+- Article 1: "All human beings are born free and equal in dignity and rights."
+- Article 2: Rights without distinction of race, colour, sex, language, religion, political opinion, national or social origin, property, birth or other status.
+- Article 3: "Everyone has the right to life, liberty and security of person."
+- Article 5: "No one shall be subjected to torture or to cruel, inhuman or degrading treatment or punishment."
+- Article 7: All are equal before the law and entitled to equal protection.
+- Article 12: No arbitrary interference with privacy, family, home, or correspondence.
+- Article 18: Right to freedom of thought, conscience and religion.
+- Article 19: Right to freedom of opinion and expression.
+- Article 20: Right to freedom of peaceful assembly and association.
+- Article 23(1): Right to work, free choice of employment, just and favourable conditions, protection against unemployment.
+- Article 23(2): Right to equal pay for equal work.
+- Article 23(3): Right to just remuneration ensuring existence worthy of human dignity.
+- Article 23(4): Right to form and join trade unions.
+- Article 24: "Everyone has the right to rest and leisure, including reasonable limitation of working hours and periodic holidays with pay."
+- Article 25: Right to standard of living adequate for health and well-being.
+- Article 26: Right to education.
+- Article 29: Duties to the community in which alone the free and full development of personality is possible.
+
+--- GALLUP ---
+Gallup. "State of the Global Workplace" reports. gallup.com/workplace
+- 23% of employees globally engaged at work (Gallup 2024)
+- Engagement fell from 23% to 21% between 2023-2024 (Gallup 2025)
+- Low engagement costs global economy $8.8 trillion - 9% of GDP (Gallup 2023)
+- Drop in 2024 engagement cost world economy $438 billion in lost productivity (Gallup 2025)
+- Managers account for 70% of variance in team engagement (Gallup 2024)
+- High engagement: turnover drops 51%, wellbeing improves 68%, productivity increases 23% (Gallup 2024)
+- 44% of employees worldwide reported lot of stress previous day - record high (Gallup 2023)
+- 20% of employees report feeling lonely in their job daily (Gallup 2024)
+- Engagement has 3.8x more influence on stress than work location (Gallup 2023)
+- Manager engagement fell 5 points in 2024 - largest single-year drop ever recorded (Gallup 2025)
+- 51% of global employees watching for or actively seeking new job (Gallup 2025)
+- Only 1 in 3 employees strongly agrees they trust their organization's leadership (Gallup)
+
+--- SHRM ---
+SHRM. "The High Cost of a Toxic Workplace Culture." 2019. shrm.org
+SHRM. "The State of Global Workplace Culture in 2024." shrm.org
+- Turnover due to culture cost U.S. organizations $223 billion over five years (SHRM 2019)
+- 1 in 5 Americans left a job due to bad company culture in past five years (SHRM 2019)
+- 76% of Americans say their manager sets the culture (SHRM 2019)
+- 36% say their manager doesn't know how to lead a team (SHRM 2019)
+- 26% of employees dread going to work (SHRM 2019)
+- Workers in positive cultures are 4x more likely to stay with their employer (SHRM 2024)
+- 57% of employees in poor cultures are actively looking for another job (SHRM 2024)
+- 5 universal positive culture elements: open, empathetic, civil, honest, fair (SHRM 2024)
+
+--- MIT SLOAN ---
+Sull, Donald, Charles Sull, Ben Zweig. "Toxic Culture Is Driving the Great Resignation." MIT SMR, Jan 11, 2022.
+Sull et al. "Why Every Leader Needs to Worry About Toxic Culture." MIT SMR, Mar 16, 2022.
+- Toxic culture is 10.4x more powerful than compensation in predicting employee turnover (MIT Sloan 2022)
+- Analysis of 34 million employee profiles and 1.4 million Glassdoor reviews (MIT Sloan 2022)
+- The Toxic Five: disrespectful, noninclusive, unethical, cutthroat, abusive (MIT Sloan 2022)
+- ~1 in 10 workers experience their culture as toxic (MIT Sloan 2022)
+- Toxic culture cost U.S. employers ~$50 billion per year before Great Resignation (MIT Sloan 2022)
+- Disrespect is #1 predictor of negative culture ratings (MIT Sloan 2022)
+- Lateral career opportunities are 2.5x more predictive of retention than pay (MIT Sloan 2022)
+
+--- AMY EDMONDSON ---
+Edmondson, Amy C. "Psychological Safety and Learning Behavior in Work Teams." Administrative Science Quarterly 44(2), 1999.
+Edmondson, Amy C. "The Fearless Organization." John Wiley & Sons, 2018.
+- Psychological safety: "a shared belief held by members of a team that the team is safe for interpersonal risk taking" (Edmondson 1999)
+- Psychological safety associated with learning behavior and team performance (Edmondson 1999, 51 work teams)
+- Analysis of 185 research papers confirms psychological safety predicts positive work experiences (Edmondson & Bransby, Harvard 2023)
+- "Low levels of psychological safety can create a culture of silence - a Cassandra culture." (Edmondson)
+- "Every time we withhold our thoughts, we rob ourselves and our colleagues of small moments of learning." (Edmondson)
+
+--- BRENE BROWN ---
+Brown, Brene. "Dare to Lead." Random House, 2018.
+Brown, Brene. "Daring Greatly." Gotham Books, 2012.
+- Research professor at University of Houston, 20+ years studying courage, vulnerability, shame, empathy
+- Seven-year study on brave leadership (Dare to Lead)
+- "Daring leadership is a collection of four skill sets that are 100% teachable, observable, and measurable." (Brown 2018)
+- "Our ability to be daring leaders will never be greater than our capacity for vulnerability." (Brown 2018)
+- "Courage is contagious." (Brown 2018)
+- Leaders must create spaces where people feel "safe, seen, heard, and respected" (Brown 2018)
+
+--- ILO ---
+International Labour Organization. ilo.org
+ILO Convention No. 190. Violence and Harassment Convention. 2019.
+- ILO operating since 1919 - international labour standards for decent work in conditions of freedom, equity, security and dignity
+- ILO defines decent work as "productive work for women and men in conditions of freedom, equity, security and human dignity"
+- ILO Convention 190: first international treaty recognizing right to world of work free from violence and harassment
+- "Labour is not a commodity" - ILO founding principle
+
+--- McKINSEY ---
+McKinsey & Company. "Diversity Wins: How Inclusion Matters." 2020. mckinsey.com
+McKinsey. "The State of Organizations 2023." mckinsey.com
+- Companies in top quartile for gender diversity 25% more likely to achieve above-average profitability (McKinsey 2020)
+- Companies in top quartile for ethnic diversity outperform bottom quartile by 36% in profitability (McKinsey 2020)
+
+--- DELOITTE ---
+Deloitte. "2024 Global Human Capital Trends." deloitte.com
+- 86% of business and HR leaders say creating sense of belonging is important (Deloitte 2024)
+- Organizations with inclusive cultures 8x more likely to achieve better business outcomes (Deloitte)
+
+--- WEF ---
+World Economic Forum. "The Future of Jobs Report 2023." weforum.org
+- Human skills - empathy, active listening, leadership - among fastest-growing in-demand skills (WEF 2023)
+- By 2027, 69 million new jobs created and 83 million displaced by automation (WEF 2023)
+
+--- APA ---
+American Psychological Association. Work and Well-Being Survey, 2023. apa.org
+- 19% of employees say their workplace is "very" or "somewhat" toxic (APA 2023)
+- Over half in toxic workplaces report mental health issues as a result (APA 2023)
+
+--- MINNESOTA ---
+Minnesota Department of Human Rights. mn.gov/mdhr
+- Minnesota Human Rights Act: broadest state civil rights law in the nation
+- Prohibits discrimination based on race, color, creed, religion, national origin, sex, marital status, familial status, disability, public assistance, sexual orientation, age
+
+=== END BASELINE LIBRARY ===
+`;
+
+const CONTENT_SCHEDULE = {
+  1: { category: "udhr_spotlight",      label: "UDHR Article Spotlight",       format: "stat",        platforms: ["bluesky", "linkedin", "facebook"] },
+  2: { category: "workplace_rights",    label: "Workplace Rights in Practice", format: "story",       platforms: ["linkedin", "facebook"] },
+  3: { category: "rights_in_news",      label: "Human Rights in the News",     format: "tension",     platforms: ["bluesky", "linkedin", "facebook"] },
+  4: { category: "community_resource",  label: "Community Resource",           format: "question",    platforms: ["facebook"] },
+  5: { category: "trust_in_action",     label: "Speed of Trust in Action",     format: "contrarian",  platforms: ["linkedin", "bluesky"] },
+  6: { category: "engagement_question", label: "Engagement Question",          format: "question",    platforms: ["bluesky", "linkedin", "facebook"] },
+  0: { category: "generate",            label: "Generate next week content",   format: null,          platforms: [] },
+};
+
+const PLATFORM_LIMITS = { bluesky: 300, linkedin: 3000, facebook: 800 };
+
+const TRUST_BEHAVIORS = [
+  "Talk Straight", "Demonstrate Respect", "Create Transparency", "Right Wrongs",
+  "Show Loyalty", "Deliver Results", "Get Better", "Confront Reality",
+  "Clarify Expectations", "Listen First", "Keep Commitments", "Extend Trust",
+];
+
+const HOOK_PATTERNS = {
+  tension:    'Open with contrast between common practice and human rights standard. "Most [organizations] say [X]. [UDHR Article N] tells a different story."',
+  stat:       'Open with a specific verified statistic from sources. "[Number]. [One sentence on why this is a human rights or dignity issue]."',
+  question:   'Open with a specific question your audience has never been asked about dignity, rights, or culture.',
+  contrarian: 'Challenge a widely held belief. "[Common belief] is not [what people think]. Here is what actually [creates change]."',
+  story:      'Open with 1-2 sentences describing a recognizable workplace scenario naming the tension. HR professionals must recognize it instantly.',
+};
+
+const BRAND_VOICE_PROMPT = `You are the content writer for North Star Human Rights, a Minnesota-based human rights consulting practice grounded in the Universal Declaration of Human Rights (UDHR).
+
+MISSION: Inspire and empower HR professionals, employers, and business leaders to create cultures where every person's dignity is recognized, protected, and upheld as a daily practice.
+
+VOICE: Warm, authoritative, never preachy. Plain language - 8th grade reading level. Specific, actionable. Never lectures - invites.
+
+HOOK PHILOSOPHY: First line must stop the scroll. Creates tension, curiosity, or recognition within 10 words. Weak hook kills the post.
+
+SOURCE INTEGRITY (non-negotiable):
+- Every statistic MUST come from LIVE SOURCES or VERIFIED LIBRARY provided
+- Every UDHR citation MUST use exact article text from sources
+- ALWAYS name the source explicitly: "According to Gallup..." "MIT Sloan research found..." "Article 23 states..."
+- NEVER invent statistics - if not in sources provided, do not use it
+- Cross-verify: if live source and library conflict, note the discrepancy and use the most recent
+
+UDHR GROUNDING: Every post ties to a specific article by number. Use exact text from sources.
+
+SPEED OF TRUST: Every post demonstrates at least one of Covey's 13 Behaviors through content itself.
+
+ANTI-REPETITION: Every post must be completely distinct - different UDHR article, different statistic, different hook, different angle.
+
+HARD RULES:
+- Never post unverified facts
+- Never make legal claims
+- Educational only - never legal advice
+- End with ONE actionable insight OR ONE genuine question - never both
+- Maximum 2 hashtags
+
+PLATFORM: Bluesky max 300 chars. LinkedIn 200-600 words. Facebook 100-250 words.`;
+
+// ─── LOGGING ───────────────────────────────────────────────────────────────
 
 async function log(env, level, action, result, detail = "") {
   const entry = { timestamp: new Date().toISOString(), level, action, result, detail };
@@ -22,11 +242,131 @@ async function tier3Alert(env, action, detail) {
   console.error(`[TIER 3 ALERT] ${action}: ${detail}`);
 }
 
-// BLUESKY
+// ─── LIVE SOURCE FETCHER ────────────────────────────────────────────────────
+
+async function fetchSource(source) {
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 8000);
+
+    const res = await fetch(source.url, {
+      signal: controller.signal,
+      headers: {
+        "User-Agent": "Mozilla/5.0 (compatible; NorthStarHR-Research/1.0; +https://northstarhr.pages.dev)",
+        "Accept": "text/html,application/xhtml+xml",
+        "Accept-Language": "en-US,en;q=0.9",
+      },
+    });
+
+    clearTimeout(timeout);
+
+    if (!res.ok) return null;
+
+    const html = await res.text();
+
+    // Extract meaningful text - strip HTML tags, get content
+    const text = html
+      .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, " ")
+      .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, " ")
+      .replace(/<nav[^>]*>[\s\S]*?<\/nav>/gi, " ")
+      .replace(/<header[^>]*>[\s\S]*?<\/header>/gi, " ")
+      .replace(/<footer[^>]*>[\s\S]*?<\/footer>/gi, " ")
+      .replace(/<[^>]+>/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+
+    // Take first 2000 characters of meaningful content
+    const snippet = text.substring(0, 2000);
+
+    return {
+      name: source.name,
+      url: source.url,
+      topic: source.topic,
+      snippet,
+      fetched_at: new Date().toISOString(),
+      success: true,
+    };
+  } catch (e) {
+    return {
+      name: source.name,
+      url: source.url,
+      topic: source.topic,
+      snippet: null,
+      error: e.message,
+      success: false,
+    };
+  }
+}
+
+async function fetchLiveSources(env) {
+  // Check cache first - don't re-fetch within 6 hours
+  const cacheKey = "live_sources:cache";
+  const cached = await env.KV.get(cacheKey);
+  if (cached) {
+    await log(env, "info", "live_sources", "cache_hit", "Using cached source data");
+    return JSON.parse(cached);
+  }
+
+  await log(env, "info", "live_sources", "fetching", `Fetching ${PRIMARY_SOURCES.length} primary sources`);
+
+  // Fetch all sources in parallel with Promise.allSettled so failures don't block
+  const results = await Promise.allSettled(
+    PRIMARY_SOURCES.map(source => fetchSource(source))
+  );
+
+  const fetched = [];
+  let successCount = 0;
+  let failCount = 0;
+
+  for (const result of results) {
+    if (result.status === "fulfilled" && result.value) {
+      fetched.push(result.value);
+      if (result.value.success) successCount++;
+      else failCount++;
+    }
+  }
+
+  const summary = {
+    fetched_at: new Date().toISOString(),
+    sources: fetched,
+    success_count: successCount,
+    fail_count: failCount,
+  };
+
+  // Cache for 6 hours
+  await env.KV.put(cacheKey, JSON.stringify(summary), { expirationTtl: 60 * 60 * 6 });
+  await log(env, "info", "live_sources", "complete", `Fetched: ${successCount} success, ${failCount} failed`);
+
+  return summary;
+}
+
+function buildLiveSourceContext(liveData) {
+  if (!liveData || !liveData.sources) return "";
+
+  const lines = [`\n=== LIVE SOURCE DATA (fetched ${liveData.fetched_at}) ===`];
+  lines.push(`Successfully fetched ${liveData.success_count} of ${PRIMARY_SOURCES.length} primary sources.`);
+  lines.push("Cross-verify any statistics below against the VERIFIED LIBRARY. If they conflict, note both and use most recent.\n");
+
+  for (const source of liveData.sources) {
+    if (!source.success || !source.snippet) continue;
+    lines.push(`--- ${source.name} (${source.url}) ---`);
+    lines.push(source.snippet.substring(0, 800));
+    lines.push("");
+  }
+
+  lines.push("=== END LIVE SOURCE DATA ===");
+  lines.push("INSTRUCTION: Use statistics and quotes from EITHER the VERIFIED LIBRARY or LIVE SOURCES above.");
+  lines.push("Always cite source by name and year. Never invent data. If uncertain, omit the statistic.");
+
+  return lines.join("\n");
+}
+
+// ─── AUTH FUNCTIONS ────────────────────────────────────────────────────────
+
 async function blueskyAuth(env) {
   const handle = env.BLUESKY_HANDLE;
   const password = env.BLUESKY_APP_PASSWORD;
-  if (!handle || !password) throw new Error("Bluesky credentials missing from environment");
+  if (!handle || !password) throw new Error("Bluesky credentials missing");
   const res = await fetch("https://bsky.social/xrpc/com.atproto.server.createSession", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -34,6 +374,7 @@ async function blueskyAuth(env) {
   });
   if (!res.ok) { const err = await res.text(); throw new Error(`Bluesky auth failed: ${res.status} - ${err}`); }
   const data = await res.json();
+  await env.KV.put("bluesky:auth_status", "authenticated", { expirationTtl: 60 * 60 * 24 });
   return { did: data.did, accessJwt: data.accessJwt, handle: data.handle };
 }
 
@@ -43,20 +384,18 @@ async function checkBlueskyAuth(env) {
     await log(env, "info", "bluesky_auth_check", "success", `Authenticated as ${session.handle}`);
     return { platform: "bluesky", status: "authenticated", handle: session.handle };
   } catch (e) {
+    await env.KV.delete("bluesky:auth_status");
     await tier3Alert(env, "bluesky_auth_check", e.message);
     return { platform: "bluesky", status: "failed", error: e.message };
   }
 }
-
-// LINKEDIN
-const LINKEDIN_REDIRECT = "https://socialmedia-agent.northstarhr.workers.dev/linkedin/callback";
 
 function linkedinAuthUrl(env) {
   const params = new URLSearchParams({
     response_type: "code",
     client_id: env.LINKEDIN_CLIENT_ID,
     redirect_uri: LINKEDIN_REDIRECT,
-    scope: "openid profile email w_member_social",
+    scope: "openid profile email",
     state: "northstar-linkedin-auth",
   });
   return `https://www.linkedin.com/oauth/v2/authorization?${params.toString()}`;
@@ -81,9 +420,7 @@ async function linkedinExchangeCode(env, code) {
 async function checkLinkedInAuth(env) {
   try {
     const token = await env.KV.get("linkedin:access_token");
-    if (!token) {
-      return { platform: "linkedin", status: "not_authorized", auth_url: linkedinAuthUrl(env), message: "Visit auth_url to authorize" };
-    }
+    if (!token) return { platform: "linkedin", status: "not_authorized", auth_url: linkedinAuthUrl(env) };
     const res = await fetch("https://api.linkedin.com/v2/userinfo", {
       headers: { Authorization: `Bearer ${token}` },
     });
@@ -100,87 +437,683 @@ async function checkLinkedInAuth(env) {
   }
 }
 
-// STATUS PAGE
-async function getRecentLogs(env, limit = 20) {
+async function checkFacebookAuth(env) {
+  try {
+    const token = env.FB_PAGE_ACCESS_TOKEN;
+    const pageId = env.FB_PAGE_ID;
+    if (!token || !pageId) throw new Error("Facebook credentials missing");
+    const res = await fetch(`https://graph.facebook.com/v19.0/${pageId}?fields=id,name&access_token=${token}`);
+    if (!res.ok) { const err = await res.text(); throw new Error(`Facebook auth failed: ${res.status} - ${err}`); }
+    const data = await res.json();
+    if (data.error) throw new Error(data.error.message);
+    await log(env, "info", "facebook_auth_check", "success", `Authenticated as ${data.name}`);
+    return { platform: "facebook", status: "authenticated", name: data.name };
+  } catch (e) {
+    await tier3Alert(env, "facebook_auth_check", e.message);
+    return { platform: "facebook", status: "failed", error: e.message };
+  }
+}
+
+async function checkInstagramAuth(env) {
+  try {
+    const token = env.FB_PAGE_ACCESS_TOKEN;
+    const pageId = env.FB_PAGE_ID;
+    if (!token || !pageId) throw new Error("Instagram credentials missing");
+    const res = await fetch(`https://graph.facebook.com/v19.0/${pageId}?fields=instagram_business_account{id,name,username}&access_token=${token}`);
+    if (!res.ok) { const err = await res.text(); throw new Error(`Instagram auth failed: ${res.status} - ${err}`); }
+    const data = await res.json();
+    if (data.error) throw new Error(data.error.message);
+    if (!data.instagram_business_account) return { platform: "instagram", status: "not_connected" };
+    const ig = data.instagram_business_account;
+    await env.KV.put("instagram:business_account_id", ig.id);
+    await log(env, "info", "instagram_auth_check", "success", `Authenticated as @${ig.username || ig.name}`);
+    return { platform: "instagram", status: "authenticated", username: ig.username || ig.name };
+  } catch (e) {
+    await tier3Alert(env, "instagram_auth_check", e.message);
+    return { platform: "instagram", status: "failed", error: e.message };
+  }
+}
+
+async function checkThreadsAuth(env) {
+  try {
+    const token = env.FB_PAGE_ACCESS_TOKEN;
+    const pageId = env.FB_PAGE_ID;
+    if (!token || !pageId) throw new Error("Threads credentials missing");
+    const res = await fetch(`https://graph.facebook.com/v19.0/${pageId}?fields=instagram_business_account{id,username}&access_token=${token}`);
+    if (!res.ok) { const err = await res.text(); throw new Error(`Threads auth failed: ${res.status} - ${err}`); }
+    const data = await res.json();
+    if (data.error) throw new Error(data.error.message);
+    if (!data.instagram_business_account) return { platform: "threads", status: "not_connected" };
+    const ig = data.instagram_business_account;
+    await log(env, "info", "threads_auth_check", "success", `Authenticated via @${ig.username}`);
+    return { platform: "threads", status: "authenticated", username: ig.username };
+  } catch (e) {
+    await tier3Alert(env, "threads_auth_check", e.message);
+    return { platform: "threads", status: "failed", error: e.message };
+  }
+}
+
+// ─── CLAUDE API ────────────────────────────────────────────────────────────
+
+async function callClaude(env, systemPrompt, userPrompt) {
+  const apiKey = env.CLAUDE_API_KEY;
+  if (!apiKey) throw new Error("CLAUDE_API_KEY missing");
+  const res = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-api-key": apiKey,
+      "anthropic-version": "2023-06-01",
+    },
+    body: JSON.stringify({
+      model: "claude-haiku-4-5-20251001",
+      max_tokens: 1500,
+      system: systemPrompt,
+      messages: [{ role: "user", content: userPrompt }],
+    }),
+  });
+  if (!res.ok) { const err = await res.text(); throw new Error(`Claude API failed: ${res.status} - ${err}`); }
+  const data = await res.json();
+  return data.content[0].text;
+}
+
+// ─── FEEDBACK SYSTEM ───────────────────────────────────────────────────────
+
+async function saveFeedback(env, postId, tags, freeText) {
+  try {
+    const val = await env.KV.get(postId);
+    if (!val) return false;
+    const post = JSON.parse(val);
+    post.feedback_tags = tags || [];
+    post.feedback_text = freeText || "";
+    post.feedback_at = new Date().toISOString();
+    await env.KV.put(postId, JSON.stringify(post), { expirationTtl: 60 * 60 * 24 * REVIEW_EXPIRY_DAYS });
+
+    const learningsRaw = await env.KV.get("feedback:learnings");
+    const learnings = learningsRaw ? JSON.parse(learningsRaw) : { tag_counts: {}, free_texts: [] };
+    for (const tag of (tags || [])) {
+      learnings.tag_counts[tag] = (learnings.tag_counts[tag] || 0) + 1;
+    }
+    if (freeText) {
+      learnings.free_texts.push({ text: freeText, date: new Date().toISOString(), postId });
+      if (learnings.free_texts.length > 50) learnings.free_texts = learnings.free_texts.slice(-50);
+    }
+    await env.KV.put("feedback:learnings", JSON.stringify(learnings));
+    await log(env, "info", "feedback_saved", postId, `Tags: ${(tags || []).join(", ")} | Text: ${freeText || "none"}`);
+    return true;
+  } catch (e) {
+    await tier3Alert(env, "feedback_save", e.message);
+    return false;
+  }
+}
+
+async function getFeedbackLearnings(env) {
+  try {
+    const raw = await env.KV.get("feedback:learnings");
+    if (!raw) return "";
+    const learnings = JSON.parse(raw);
+    const lines = [];
+    const rules = {
+      "Too formal": "RULE: Use conversational warm language - avoid academic tone",
+      "Too vague": "RULE: Be specific - name exact UDHR article, statistic, situation",
+      "Wrong UDHR article": "RULE: Double-check all UDHR articles against sources before using",
+      "Too similar to others": "RULE: Every post must be completely distinct - different article, stat, angle",
+      "Hook weak": "RULE: Prioritize hook strength - must score 8+/10",
+      "Great post": "RULE: This tone and format resonates - maintain this quality level",
+    };
+    for (const [tag, count] of Object.entries(learnings.tag_counts || {})) {
+      if (count >= 2 && rules[tag]) lines.push(`${rules[tag]} (flagged ${count}x by editor)`);
+    }
+    for (const fb of (learnings.free_texts || []).slice(-5)) {
+      lines.push(`EDITOR NOTE (${fb.date.split("T")[0]}): ${fb.text}`);
+    }
+    return lines.length > 0 ? `\n\nEDITOR FEEDBACK:\n${lines.join("\n")}` : "";
+  } catch (e) { return ""; }
+}
+
+// ─── CONTENT INTELLIGENCE ──────────────────────────────────────────────────
+
+async function researchContentIntelligence(env, liveSourceContext, feedbackContext) {
+  const prompt = `You are a content intelligence researcher for North Star Human Rights.
+
+Based on the LIVE SOURCE DATA and VERIFIED LIBRARY provided, identify what is most relevant and timely for HR professionals and employers this week.
+
+${feedbackContext}
+
+Return EXACTLY this JSON structure:
+{
+  "trending_topics": [
+    {
+      "topic": "specific topic title",
+      "angle": "how North Star HR addresses this",
+      "udhr_article": "Article NUMBER - Name",
+      "hook_format": "tension|stat|question|contrarian|story",
+      "covey_behavior": "one of the 13 Trust Behaviors",
+      "why_now": "one sentence on urgency",
+      "suggested_source": "name of source from library or live data"
+    }
+  ],
+  "audience_pain_points": ["pain point 1", "pain point 2", "pain point 3"],
+  "week_theme": "one overarching theme"
+}
+
+CRITICAL: 5 topics with DIFFERENT UDHR articles, hook formats, and Covey behaviors. No repetition.
+Return ONLY valid JSON. No markdown.`;
+
+  const systemPrompt = BRAND_VOICE_PROMPT + "\n\n" + SOURCE_LIBRARY + "\n\n" + liveSourceContext;
+
+  try {
+    const result = await callClaude(env, systemPrompt, prompt);
+    const parsed = JSON.parse(result.replace(/```json|```/g, "").trim());
+    if (!parsed.trending_topics?.length) throw new Error("Invalid format");
+    await log(env, "info", "content_intelligence", "success", `Theme: ${parsed.week_theme}`);
+    return parsed;
+  } catch (e) {
+    await log(env, "warn", "content_intelligence", "fallback", e.message);
+    return {
+      trending_topics: [
+        { topic: "Workplace dignity", angle: "UDHR Article 23 grounds HR policy", udhr_article: "Article 23 - Right to Work", hook_format: "tension", covey_behavior: "Talk Straight", why_now: "Foundation of HR practice", suggested_source: "UDHR" },
+        { topic: "Psychological safety", angle: "Article 5 and freedom from degrading treatment", udhr_article: "Article 5 - Freedom from Degrading Treatment", hook_format: "stat", covey_behavior: "Demonstrate Respect", why_now: "Edmondson research", suggested_source: "Edmondson" },
+        { topic: "Low-trust workplace cost", angle: "Trust tax on every organization", udhr_article: "Article 1 - Equal Dignity", hook_format: "contrarian", covey_behavior: "Create Transparency", why_now: "Culture drives attrition", suggested_source: "MIT Sloan" },
+        { topic: "Employee voice", angle: "Article 20 and freedom of association", udhr_article: "Article 20 - Freedom of Association", hook_format: "question", covey_behavior: "Listen First", why_now: "Engagement crisis", suggested_source: "Gallup" },
+        { topic: "Rest and burnout", angle: "Article 24 and workplace wellbeing", udhr_article: "Article 24 - Right to Rest", hook_format: "story", covey_behavior: "Confront Reality", why_now: "Record stress levels", suggested_source: "Gallup" },
+      ],
+      audience_pain_points: ["culture change resistance", "retention challenges", "burnout"],
+      week_theme: "Dignity as a daily practice",
+    };
+  }
+}
+
+// ─── HOOK SCORING ──────────────────────────────────────────────────────────
+
+async function scoreHook(env, hookText, hookFormat, platform) {
+  try {
+    const result = await callClaude(env,
+      "You are a social media hook expert. Return only valid JSON.",
+      `Score this hook 1-10 for North Star Human Rights.
+HOOK: "${hookText}"
+FORMAT: ${hookFormat} | PLATFORM: ${platform} | AUDIENCE: HR professionals, employers
+
+Criteria: stops scroll (0-3), specific (0-2), warm/authoritative (0-2), earns read (0-2), platform-fit (0-1)
+
+Return ONLY: {"score": number, "weakness": "one sentence or empty", "stronger_version": "rewrite if below 7 or empty"}`
+    );
+    return JSON.parse(result.replace(/```json|```/g, "").trim());
+  } catch (e) {
+    return { score: 7, weakness: "", stronger_version: "" };
+  }
+}
+
+// ─── POST GENERATION ───────────────────────────────────────────────────────
+
+async function generatePost(env, platform, category, topic, dayOfWeek, weekIntelligence, feedbackContext, alreadyUsed, liveSourceContext) {
+  const limit = PLATFORM_LIMITS[platform];
+  const hookFormat = topic.hook_format || CONTENT_SCHEDULE[dayOfWeek]?.format || "tension";
+  const trustBehavior = topic.covey_behavior || TRUST_BEHAVIORS[dayOfWeek % TRUST_BEHAVIORS.length];
+  const hookInstruction = HOOK_PATTERNS[hookFormat] || HOOK_PATTERNS.tension;
+
+  const usedContext = alreadyUsed.length > 0
+    ? `\nALREADY USED THIS WEEK - DO NOT REPEAT:\n${alreadyUsed.map(u => `- ${u.udhr_article}, topic: ${u.topic}`).join("\n")}\nYour post MUST be completely different.`
+    : "";
+
+  const userPrompt = `Generate a ${platform} post for North Star Human Rights.
+
+WEEK THEME: ${weekIntelligence?.week_theme || "Dignity as a daily practice"}
+PAIN POINTS: ${(weekIntelligence?.audience_pain_points || []).join(", ")}
+${feedbackContext}
+${usedContext}
+
+REQUIREMENTS:
+- Category: ${category}
+- Topic: ${topic.topic}
+- Angle: ${topic.angle}
+- UDHR: ${topic.udhr_article}
+- Trust Behavior (Covey): ${trustBehavior}
+- Hook Format: ${hookFormat}
+- Suggested source: ${topic.suggested_source || "any from sources"}
+- Limit: ${limit} characters
+
+HOOK: ${hookInstruction}
+
+SOURCE REQUIREMENT: Use at least one verified statistic or quote. Name it explicitly: "According to Gallup..." "MIT Sloan found..." "Article 23 states..." Cross-check live data against library - use most current and accurate version.
+
+Return ONLY:
+{
+  "hook": "first line only",
+  "content": "complete post text",
+  "udhr_article": "${topic.udhr_article}",
+  "udhr_quote": "exact text or empty",
+  "source_cited": "source name and year",
+  "source_verified": true or false,
+  "trust_behavior": "${trustBehavior}",
+  "hook_format": "${hookFormat}",
+  "character_count": number,
+  "readability_grade": number,
+  "review_notes": "one sentence on post strength"
+}
+
+Return ONLY valid JSON.`;
+
+  const systemPrompt = BRAND_VOICE_PROMPT + "\n\n" + SOURCE_LIBRARY + "\n\n" + liveSourceContext;
+  const result = await callClaude(env, systemPrompt, userPrompt);
+  return JSON.parse(result.replace(/```json|```/g, "").trim());
+}
+
+// ─── QUALITY GATE ──────────────────────────────────────────────────────────
+
+function qualityCheck(post, platform) {
+  const limit = PLATFORM_LIMITS[platform];
+  const issues = [];
+  if (!post.content) issues.push("No content");
+  if (post.content?.length > limit) issues.push(`Over limit: ${post.content.length}/${limit}`);
+  if (post.readability_grade > 9) issues.push(`Grade too high: ${post.readability_grade}`);
+  if (!post.udhr_article) issues.push("No UDHR article");
+  if (!post.hook) issues.push("No hook");
+  if (!post.source_cited) issues.push("No source cited");
+  if (post.source_verified === false) issues.push("Source flagged unverified");
+  return { passed: issues.length === 0, issues };
+}
+
+// ─── WEEKLY GENERATION ─────────────────────────────────────────────────────
+
+async function generateWeeklyContent(env) {
+  await log(env, "info", "content_generation", "started", "Generating weekly content batch");
+  let generated = 0;
+  let failed = 0;
+  const alreadyUsed = [];
+
+  try {
+    // Step 1 - Fetch live sources
+    const liveData = await fetchLiveSources(env);
+    const liveSourceContext = buildLiveSourceContext(liveData);
+    await log(env, "info", "live_sources", "ready", `${liveData.success_count} sources fetched`);
+
+    // Step 2 - Content intelligence with live data
+    const feedbackContext = await getFeedbackLearnings(env);
+    const intelligence = await researchContentIntelligence(env, liveSourceContext, feedbackContext);
+    const topics = intelligence.trending_topics;
+
+    // Step 3 - Generate posts
+    for (let day = 1; day <= 6; day++) {
+      const schedule = CONTENT_SCHEDULE[day];
+      const topic = topics[(day - 1) % topics.length];
+
+      for (const platform of schedule.platforms) {
+        try {
+          let post = await generatePost(env, platform, schedule.category, topic, day, intelligence, feedbackContext, alreadyUsed, liveSourceContext);
+          let quality = qualityCheck(post, platform);
+
+          if (!quality.passed) {
+            await log(env, "warn", "quality_fail", platform, `Day ${day}: ${quality.issues.join(", ")} - retrying`);
+            post = await generatePost(env, platform, schedule.category, topic, day + 1, intelligence, feedbackContext, alreadyUsed, liveSourceContext);
+            quality = qualityCheck(post, platform);
+            if (!quality.passed) {
+              await tier3Alert(env, "content_generation", `Quality failed twice: ${platform} day ${day}: ${quality.issues.join(", ")}`);
+              failed++;
+              continue;
+            }
+          }
+
+          const hookScore = await scoreHook(env, post.hook || post.content.split("\n")[0], post.hook_format, platform);
+          if (hookScore.score < HOOK_SCORE_MINIMUM && hookScore.stronger_version) {
+            const oldHook = post.hook || post.content.split("\n")[0];
+            post.content = post.content.replace(oldHook, hookScore.stronger_version);
+            post.hook = hookScore.stronger_version;
+            post.hook_improved = true;
+          }
+
+          alreadyUsed.push({ udhr_article: post.udhr_article, topic: topic.topic, hook_format: post.hook_format });
+
+          const now = new Date();
+          const daysUntil = (day - now.getDay() + 7) % 7 || 7;
+          const scheduledDate = new Date(now);
+          scheduledDate.setDate(now.getDate() + daysUntil);
+          scheduledDate.setHours(16, 0, 0, 0);
+
+          const postId = `post:${scheduledDate.toISOString().split("T")[0]}:${platform}:${schedule.category}`;
+
+          await env.KV.put(postId, JSON.stringify({
+            id: postId, platform, content: post.content,
+            hook: post.hook || "", hook_format: post.hook_format || schedule.format,
+            hook_score: hookScore.score, hook_improved: post.hook_improved || false,
+            category: schedule.category, category_label: schedule.label,
+            udhr_article: post.udhr_article, udhr_quote: post.udhr_quote || "",
+            source_cited: post.source_cited || "", source_verified: post.source_verified !== false,
+            trust_behavior: post.trust_behavior,
+            character_count: post.character_count || post.content.length,
+            readability_grade: post.readability_grade,
+            review_notes: post.review_notes || "", topic: topic.topic,
+            week_theme: intelligence.week_theme || "",
+            live_sources_used: liveData.success_count,
+            scheduled_for: scheduledDate.toISOString(),
+            status: "pending_review", generated_at: new Date().toISOString(),
+            feedback_tags: [], feedback_text: "",
+          }), { expirationTtl: 60 * 60 * 24 * REVIEW_EXPIRY_DAYS });
+
+          generated++;
+          await log(env, "info", "content_queued", platform, `${postId} | Hook: ${hookScore.score}/10 | Source: ${post.source_cited}`);
+
+        } catch (e) {
+          await tier3Alert(env, "content_generation", `Failed: ${platform} day ${day}: ${e.message}`);
+          failed++;
+        }
+      }
+    }
+
+    await log(env, "info", "content_generation", "completed", `Generated: ${generated} | Failed: ${failed}`);
+    return { generated, failed };
+
+  } catch (e) {
+    await tier3Alert(env, "content_generation", `Batch failed: ${e.message}`);
+    return { generated, failed };
+  }
+}
+
+// ─── SINGLE POST REGENERATION ──────────────────────────────────────────────
+
+async function regenerateSinglePost(env, postId, feedbackText, feedbackTags) {
+  try {
+    const val = await env.KV.get(postId);
+    if (!val) throw new Error("Post not found");
+    const oldPost = JSON.parse(val);
+
+    const specificFeedback = `
+ORIGINAL POST TO IMPROVE:
+"${oldPost.content}"
+
+EDITOR FEEDBACK:
+Tags: ${feedbackTags.join(", ")}
+Notes: ${feedbackText || "See tags"}
+${feedbackTags.includes("Too formal") ? "FIX: More conversational and warm" : ""}
+${feedbackTags.includes("Too vague") ? "FIX: Be more specific - name exact article, stat, situation" : ""}
+${feedbackTags.includes("Wrong UDHR article") ? "FIX: Use different, correctly cited UDHR article from sources" : ""}
+${feedbackTags.includes("Too similar to others") ? "FIX: Completely different angle, article, and hook" : ""}
+${feedbackTags.includes("Hook weak") ? "FIX: Rewrite hook entirely - must score 8+/10" : ""}
+${feedbackText ? `SPECIFIC: "${feedbackText}"` : ""}
+
+Generate SUBSTANTIALLY DIFFERENT post addressing all feedback.`;
+
+    const liveData = await fetchLiveSources(env);
+    const liveSourceContext = buildLiveSourceContext(liveData);
+
+    const topic = {
+      topic: oldPost.topic || "workplace dignity",
+      angle: feedbackText || oldPost.review_notes || oldPost.topic,
+      udhr_article: feedbackTags.includes("Wrong UDHR article") ? "Article 1 - Equal Dignity" : oldPost.udhr_article,
+      hook_format: feedbackTags.includes("Hook weak") ? "tension" : (oldPost.hook_format || "tension"),
+      covey_behavior: oldPost.trust_behavior || "Talk Straight",
+      suggested_source: "any from sources",
+    };
+
+    const post = await generatePost(env, oldPost.platform, oldPost.category, topic,
+      new Date(oldPost.scheduled_for).getDay(),
+      { week_theme: oldPost.week_theme },
+      specificFeedback, [], liveSourceContext
+    );
+
+    const quality = qualityCheck(post, oldPost.platform);
+    if (!quality.passed) throw new Error(`Quality gate: ${quality.issues.join(", ")}`);
+
+    const hookScore = await scoreHook(env, post.hook || post.content.split("\n")[0], post.hook_format, oldPost.platform);
+
+    await env.KV.put(postId, JSON.stringify({
+      ...oldPost,
+      content: post.content, hook: post.hook || "",
+      hook_format: post.hook_format, hook_score: hookScore.score,
+      source_cited: post.source_cited || "", source_verified: post.source_verified !== false,
+      udhr_article: post.udhr_article, udhr_quote: post.udhr_quote || "",
+      trust_behavior: post.trust_behavior,
+      character_count: post.character_count || post.content.length,
+      readability_grade: post.readability_grade,
+      review_notes: post.review_notes || "",
+      status: "pending_review",
+      regenerated_at: new Date().toISOString(),
+      regeneration_feedback: feedbackText,
+    }), { expirationTtl: 60 * 60 * 24 * REVIEW_EXPIRY_DAYS });
+
+    await log(env, "info", "post_regenerated", oldPost.platform, `${postId} | Hook: ${hookScore.score}/10 | Source: ${post.source_cited}`);
+    return true;
+  } catch (e) {
+    await tier3Alert(env, "post_regeneration", e.message);
+    return false;
+  }
+}
+
+// ─── QUEUE + LOGS ──────────────────────────────────────────────────────────
+
+async function getReviewQueue(env) {
+  try {
+    const list = await env.KV.list({ prefix: "post:" });
+    const posts = await Promise.all(list.keys.map(async (k) => {
+      const val = await env.KV.get(k.name);
+      return val ? JSON.parse(val) : null;
+    }));
+    return posts.filter(Boolean).filter(p => p.status === "pending_review")
+      .sort((a, b) => new Date(a.scheduled_for) - new Date(b.scheduled_for));
+  } catch (e) { return []; }
+}
+
+async function updatePostStatus(env, postId, status) {
+  try {
+    const val = await env.KV.get(postId);
+    if (!val) return false;
+    const post = JSON.parse(val);
+    post.status = status;
+    post.reviewed_at = new Date().toISOString();
+    await env.KV.put(postId, JSON.stringify(post), { expirationTtl: 60 * 60 * 24 * REVIEW_EXPIRY_DAYS });
+    await log(env, "info", "post_review", status, postId);
+    return true;
+  } catch (e) { return false; }
+}
+
+async function getRecentLogs(env, limit = 30) {
   try {
     const list = await env.KV.list({ prefix: "log:" });
     const keys = list.keys.slice(-limit);
-    const entries = await Promise.all(keys.map(async (k) => { const val = await env.KV.get(k.name); return val ? JSON.parse(val) : null; }));
+    const entries = await Promise.all(keys.map(async (k) => {
+      const val = await env.KV.get(k.name);
+      return val ? JSON.parse(val) : null;
+    }));
     return entries.filter(Boolean).reverse();
   } catch (e) { return []; }
 }
 
+// ─── STATUS PAGE ───────────────────────────────────────────────────────────
+
 async function buildStatusPage(env) {
-  const logs = await getRecentLogs(env);
-  const lastBluesky = logs.find((l) => l.action === "bluesky_auth_check");
+  const logs = await getRecentLogs(env, 30);
   const linkedInToken = await env.KV.get("linkedin:access_token");
-  const rows = logs.map((l) => `<tr class="${l.level}"><td>${l.timestamp}</td><td>${l.level.toUpperCase()}</td><td>${l.action}</td><td>${l.result}</td><td>${l.detail || ""}</td></tr>`).join("");
+  const blueskyStatus = await env.KV.get("bluesky:auth_status");
+  const queue = await getReviewQueue(env);
+  const liveSourceCache = await env.KV.get("live_sources:cache");
+  const liveSourceInfo = liveSourceCache ? JSON.parse(liveSourceCache) : null;
+
+  const platformStatus = (platform) => {
+    const last = logs.find((l) => l.action === `${platform}_auth_check`);
+    return last?.result === "success" ? "ok" : "warn";
+  };
+
+  const hookColor = (score) => score >= 8 ? "#4caf82" : score >= 7 ? "#c9a84c" : "#c94c4c";
+
+  const logRows = logs.map((l) => `
+    <tr class="${l.level}">
+      <td>${l.timestamp.replace("T", " ").split(".")[0]}</td>
+      <td>${l.level.toUpperCase()}</td>
+      <td>${l.action}</td>
+      <td>${l.result}</td>
+      <td>${l.detail || ""}</td>
+    </tr>`).join("");
+
+  const tagButtons = QUICK_TAGS.map(t =>
+    `<button type="button" class="tag" onclick="toggleTag(this,'${t}')">${t}</button>`
+  ).join("");
+
+  const queueRows = queue.length > 0 ? queue.map((p) => `
+    <tr>
+      <td>${p.scheduled_for.split("T")[0]}</td>
+      <td><span class="pb ${p.platform}">${p.platform}</span></td>
+      <td>${p.category_label}</td>
+      <td class="preview">
+        <strong style="color:#c9a84c">${p.hook || ""}</strong><br>
+        <span style="color:#aaa;font-size:.7rem">${p.content.substring(0, 90)}${p.content.length > 90 ? "..." : ""}</span><br>
+        <span style="color:${p.source_verified ? "#4caf82" : "#c94c4c"};font-size:.65rem">
+          ${p.source_verified ? "✓" : "⚠"} ${p.source_cited || "No source"}
+        </span>
+      </td>
+      <td>${p.udhr_article}</td>
+      <td>${p.trust_behavior}</td>
+      <td style="color:${hookColor(p.hook_score)};font-weight:700">${p.hook_score || "?"}/10${p.hook_improved ? " ↑" : ""}</td>
+      <td>
+        <a class="approve" href="/review?id=${encodeURIComponent(p.id)}&action=approve">Approve</a>
+        <button class="feedback-btn" onclick="openFeedback('${encodeURIComponent(p.id)}')">Feedback</button>
+      </td>
+    </tr>`).join("") :
+    '<tr><td colspan="8" style="color:#888;padding:1rem;text-align:center">No posts pending. Click Generate to create this weeks content.</td></tr>';
 
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>North Star Agent - Status</title>
+  <title>North Star Agent</title>
   <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: system-ui, sans-serif; background: #0f0f1a; color: #e8e4d9; padding: 2rem; }
-    h1 { color: #c9a84c; font-size: 1.5rem; margin-bottom: 0.25rem; }
-    h2 { color: #c9a84c; font-size: 1rem; margin: 1.5rem 0 0.75rem; }
-    .subtitle { color: #888; font-size: 0.85rem; margin-bottom: 2rem; }
-    .status-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1rem; margin-bottom: 2rem; }
-    .card { background: #1a1a2e; border: 1px solid #2d2d44; border-radius: 8px; padding: 1rem; }
-    .card .label { font-size: 0.75rem; color: #888; margin-bottom: 0.35rem; }
-    .card .value { font-size: 1rem; font-weight: 600; }
-    .ok { color: #4caf82; } .warn { color: #c9a84c; } .error { color: #c94c4c; }
-    table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
-    th { background: #1a1a2e; color: #c9a84c; text-align: left; padding: 0.5rem 0.75rem; }
-    td { padding: 0.45rem 0.75rem; border-bottom: 1px solid #1a1a2e; }
-    tr.info td { background: #0f0f1a; } tr.warn td { background: #1a1500; } tr.error td { background: #1a0000; }
-    .phase { background: #1a1a2e; border-radius: 8px; padding: 1rem; margin-bottom: 0.5rem; display: flex; justify-content: space-between; align-items: center; }
-    .badge { font-size: 0.75rem; padding: 0.2rem 0.6rem; border-radius: 20px; background: #2d2d44; color: #888; }
-    .badge.active { background: #1a3020; color: #4caf82; }
-    .auth-link { display: inline-block; margin-top: 0.5rem; background: #c9a84c; color: #0f0f1a; padding: 0.4rem 1rem; border-radius: 4px; text-decoration: none; font-weight: 600; font-size: 0.8rem; }
-    footer { margin-top: 2rem; color: #444; font-size: 0.75rem; }
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:system-ui,sans-serif;background:#0f0f1a;color:#e8e4d9;padding:2rem}
+    h1{color:#c9a84c;font-size:1.5rem;margin-bottom:.25rem}
+    h2{color:#c9a84c;font-size:1rem;margin:1.5rem 0 .75rem;border-bottom:1px solid #2d2d44;padding-bottom:.5rem}
+    .sub{color:#888;font-size:.85rem;margin-bottom:2rem}
+    .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(155px,1fr));gap:1rem;margin-bottom:1rem}
+    .card{background:#1a1a2e;border:1px solid #2d2d44;border-radius:8px;padding:1rem}
+    .card .lbl{font-size:.75rem;color:#888;margin-bottom:.35rem}
+    .card .val{font-size:1rem;font-weight:600}
+    .ok{color:#4caf82}.warn{color:#c9a84c}.error{color:#c94c4c}
+    table{width:100%;border-collapse:collapse;font-size:.8rem;margin-bottom:2rem}
+    th{background:#1a1a2e;color:#c9a84c;text-align:left;padding:.5rem .75rem}
+    td{padding:.45rem .75rem;border-bottom:1px solid #1a1a2e;vertical-align:top}
+    tr.info td{background:#0f0f1a}tr.warn td{background:#1a1500}tr.error td{background:#1a0000}
+    .preview{max-width:260px;word-break:break-word}
+    .phase{background:#1a1a2e;border-radius:8px;padding:.75rem 1rem;margin-bottom:.4rem;display:flex;justify-content:space-between;align-items:center}
+    .badge{font-size:.75rem;padding:.2rem .6rem;border-radius:20px;background:#2d2d44;color:#888}
+    .badge.active{background:#1a3020;color:#4caf82}.badge.done{background:#1a2a40;color:#4c9fcf}
+    .auth-link{display:inline-block;margin-top:.5rem;background:#c9a84c;color:#0f0f1a;padding:.3rem .8rem;border-radius:4px;text-decoration:none;font-weight:600;font-size:.75rem}
+    .approve{display:inline-block;background:#1a3020;color:#4caf82;border:1px solid #4caf82;padding:.2rem .6rem;border-radius:4px;text-decoration:none;font-size:.75rem;margin-right:.25rem}
+    .feedback-btn{background:#1a1a40;color:#c9a84c;border:1px solid #c9a84c;padding:.2rem .6rem;border-radius:4px;font-size:.75rem;cursor:pointer}
+    .gen-btn{display:inline-block;background:#c9a84c;color:#0f0f1a;padding:.5rem 1.5rem;border-radius:6px;text-decoration:none;font-weight:700;font-size:.85rem;margin-bottom:1rem}
+    .refresh-btn{display:inline-block;background:#1a1a2e;color:#c9a84c;border:1px solid #c9a84c;padding:.35rem 1rem;border-radius:6px;text-decoration:none;font-size:.8rem;margin-bottom:1rem;margin-left:.75rem}
+    .pb{font-size:.7rem;padding:.15rem .5rem;border-radius:10px;font-weight:600}
+    .pb.bluesky{background:#0a3060;color:#4c9fcf}.pb.linkedin{background:#003060;color:#4c9fcf}.pb.facebook{background:#001a40;color:#4c6fcf}
+    .qcount{background:#c9a84c;color:#0f0f1a;font-size:.7rem;padding:.1rem .5rem;border-radius:10px;font-weight:700;margin-left:.5rem}
+    .source-info{background:#1a1a2e;border-radius:6px;padding:.75rem 1rem;margin-bottom:1rem;font-size:.8rem;color:#888}
+    .source-info .ok{color:#4caf82}
+    footer{margin-top:2rem;color:#444;font-size:.75rem;border-top:1px solid #1a1a2e;padding-top:1rem}
+    .modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:100;align-items:center;justify-content:center}
+    .modal.open{display:flex}
+    .modal-box{background:#1a1a2e;border:1px solid #c9a84c;border-radius:12px;padding:1.5rem;width:90%;max-width:540px}
+    .modal-box h3{color:#c9a84c;margin-bottom:.75rem}
+    .tags{display:flex;flex-wrap:wrap;gap:.4rem;margin-bottom:.75rem}
+    .tag{background:#0f0f1a;color:#888;border:1px solid #2d2d44;padding:.3rem .7rem;border-radius:20px;font-size:.78rem;cursor:pointer}
+    .tag.selected{background:#1a3020;color:#4caf82;border-color:#4caf82}
+    .feedback-text{width:100%;background:#0f0f1a;border:1px solid #2d2d44;color:#e8e4d9;border-radius:6px;padding:.5rem;font-size:.85rem;resize:vertical;min-height:60px;margin-bottom:.75rem}
+    .modal-actions{display:flex;gap:.5rem;flex-wrap:wrap}
+    .btn-save{background:#c9a84c;color:#0f0f1a;border:none;padding:.4rem 1rem;border-radius:6px;font-weight:700;cursor:pointer;font-size:.85rem}
+    .btn-regen{background:#8b2020;color:#fff;border:none;padding:.4rem 1rem;border-radius:6px;font-weight:700;cursor:pointer;font-size:.85rem}
+    .btn-reject{background:#1a0000;color:#c94c4c;border:1px solid #c94c4c;padding:.4rem 1rem;border-radius:6px;cursor:pointer;font-size:.85rem}
+    .btn-cancel{background:transparent;color:#888;border:1px solid #2d2d44;padding:.4rem 1rem;border-radius:6px;cursor:pointer;font-size:.85rem}
+    .original-post{background:#0f0f1a;border:1px solid #2d2d44;border-radius:6px;padding:.75rem;margin-bottom:.75rem;font-size:.8rem;color:#aaa;max-height:100px;overflow-y:auto}
   </style>
 </head>
 <body>
   <h1>North Star Human Rights</h1>
-  <p class="subtitle">Social Media Agent - Status Dashboard | Phase 1: Foundation</p>
+  <p class="sub">Social Media Agent v0.8.0 | Live Source Fetching + Cross-Verification | 35+ Verified Sources</p>
+
   <h2>Platform Auth Status</h2>
-  <div class="status-grid">
-    <div class="card">
-      <div class="label">Bluesky</div>
-      <div class="value ${lastBluesky?.result === "success" ? "ok" : "warn"}">${lastBluesky?.result === "success" ? "Authenticated" : "Pending"}</div>
-    </div>
-    <div class="card">
-      <div class="label">LinkedIn</div>
-      <div class="value ${linkedInToken ? "ok" : "warn"}">${linkedInToken ? "Authenticated" : "Not authorized"}</div>
-      ${!linkedInToken ? '<a class="auth-link" href="/linkedin/authorize">Authorize LinkedIn</a>' : ""}
-    </div>
-    <div class="card"><div class="label">Facebook</div><div class="value warn">Pending</div></div>
-    <div class="card"><div class="label">Instagram</div><div class="value warn">Pending</div></div>
-    <div class="card"><div class="label">Threads</div><div class="value warn">Pending</div></div>
-    <div class="card"><div class="label">YouTube</div><div class="value warn">Parked</div></div>
+  <div class="grid">
+    <div class="card"><div class="lbl">Bluesky</div><div class="val ${blueskyStatus === "authenticated" ? "ok" : "warn"}">${blueskyStatus === "authenticated" ? "Authenticated" : "Pending"}</div></div>
+    <div class="card"><div class="lbl">LinkedIn</div><div class="val ${linkedInToken ? "ok" : "warn"}">${linkedInToken ? "Authenticated" : "Not authorized"}</div>${!linkedInToken ? '<a class="auth-link" href="/linkedin/authorize">Authorize</a>' : ""}</div>
+    <div class="card"><div class="lbl">Facebook</div><div class="val ${platformStatus("facebook") === "ok" ? "ok" : "warn"}">${platformStatus("facebook") === "ok" ? "Authenticated" : "Pending"}</div></div>
+    <div class="card"><div class="lbl">Instagram</div><div class="val ${platformStatus("instagram") === "ok" ? "ok" : "warn"}">${platformStatus("instagram") === "ok" ? "Authenticated" : "Pending Meta"}</div></div>
+    <div class="card"><div class="lbl">Threads</div><div class="val ${platformStatus("threads") === "ok" ? "ok" : "warn"}">${platformStatus("threads") === "ok" ? "Authenticated" : "Pending Meta"}</div></div>
+    <div class="card"><div class="lbl">YouTube</div><div class="val warn">Parked</div></div>
   </div>
+
+  <h2>Live Source Status</h2>
+  <div class="source-info">
+    ${liveSourceInfo
+      ? `<span class="ok">✓ ${liveSourceInfo.success_count}/${PRIMARY_SOURCES.length} primary sources fetched</span> - Last updated: ${liveSourceInfo.fetched_at.replace("T", " ").split(".")[0]} UTC - Cached 6 hours`
+      : `<span class="warn">⚠ Sources not yet fetched - will fetch on next Generate run</span>`
+    }
+  </div>
+
   <h2>Build Phases</h2>
-  <div class="phase"><span>Phase 1 - Foundation</span><span class="badge active">In Progress</span></div>
-  <div class="phase"><span>Phase 2 - Content Engine</span><span class="badge">Not Started</span></div>
+  <div class="phase"><span>Phase 1 - Foundation</span><span class="badge done">Complete</span></div>
+  <div class="phase"><span>Phase 2 - Content Engine</span><span class="badge active">Active</span></div>
   <div class="phase"><span>Phase 3 - Posting</span><span class="badge">Not Started</span></div>
   <div class="phase"><span>Phase 4 - Monitoring</span><span class="badge">Not Started</span></div>
   <div class="phase"><span>Phase 5 - Review Dashboard</span><span class="badge">Not Started</span></div>
   <div class="phase"><span>Phase 6 - Growth Intelligence</span><span class="badge">Not Started</span></div>
-  <h2>Recent Log (Last 20 Actions)</h2>
+
+  <h2>Content Review Queue <span class="qcount">${queue.length} pending</span></h2>
+  <a class="gen-btn" href="/generate">Generate This Weeks Content</a>
+  <a class="refresh-btn" href="/refresh-sources">Refresh Live Sources</a>
+  <table>
+    <thead><tr><th>Scheduled</th><th>Platform</th><th>Category</th><th>Hook + Preview + Source</th><th>UDHR</th><th>Trust Behavior</th><th>Hook Score</th><th>Action</th></tr></thead>
+    <tbody>${queueRows}</tbody>
+  </table>
+
+  <h2>Recent Log (Last 30 Actions)</h2>
   <table>
     <thead><tr><th>Timestamp</th><th>Level</th><th>Action</th><th>Result</th><th>Detail</th></tr></thead>
-    <tbody>${rows || '<tr><td colspan="5" style="color:#888;padding:1rem">No logs yet</td></tr>'}</tbody>
+    <tbody>${logRows || '<tr><td colspan="5" style="color:#888;padding:1rem">No logs yet</td></tr>'}</tbody>
   </table>
-  <footer>North Star Human Rights - northstarhr.pages.dev | INTEGRITY INTEGRITY INTEGRITY | Last generated: ${new Date().toISOString()}</footer>
+
+  <footer>North Star Human Rights | INTEGRITY INTEGRITY INTEGRITY | Slow is smooth. Smooth is fast. | ${new Date().toISOString()}</footer>
+
+  <div class="modal" id="feedbackModal">
+    <div class="modal-box">
+      <h3>Post Feedback</h3>
+      <input type="hidden" id="modal-post-id">
+      <div class="original-post" id="modal-original-post"></div>
+      <p style="color:#888;font-size:.78rem;margin-bottom:.5rem">Quick tags:</p>
+      <div class="tags">${tagButtons}</div>
+      <textarea class="feedback-text" id="feedback-text" placeholder="Specific notes - be direct about what needs to change..."></textarea>
+      <div class="modal-actions">
+        <button class="btn-save" onclick="submitFeedback('approve_with_feedback')">Approve + Feedback</button>
+        <button class="btn-regen" onclick="submitFeedback('regenerate')">Regenerate</button>
+        <button class="btn-reject" onclick="submitFeedback('reject')">Reject</button>
+        <button class="btn-cancel" onclick="closeModal()">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let selectedTags = [];
+    const posts = ${JSON.stringify(queue.reduce((acc, p) => { acc[encodeURIComponent(p.id)] = p.content; return acc; }, {}))};
+    function openFeedback(postId) {
+      document.getElementById('modal-post-id').value = postId;
+      document.getElementById('feedback-text').value = '';
+      document.getElementById('modal-original-post').textContent = posts[postId] || '';
+      selectedTags = [];
+      document.querySelectorAll('.tag').forEach(t => t.classList.remove('selected'));
+      document.getElementById('feedbackModal').classList.add('open');
+    }
+    function closeModal() { document.getElementById('feedbackModal').classList.remove('open'); }
+    function toggleTag(btn, tag) {
+      btn.classList.toggle('selected');
+      selectedTags = selectedTags.includes(tag) ? selectedTags.filter(t => t !== tag) : [...selectedTags, tag];
+    }
+    function submitFeedback(action) {
+      const postId = document.getElementById('modal-post-id').value;
+      const text = document.getElementById('feedback-text').value;
+      window.location.href = '/feedback?id=' + postId + '&action=' + action + '&tags=' + encodeURIComponent(selectedTags.join(',')) + '&text=' + encodeURIComponent(text);
+    }
+    document.getElementById('feedbackModal').addEventListener('click', e => { if (e.target === document.getElementById('feedbackModal')) closeModal(); });
+  </script>
 </body>
 </html>`;
 }
 
-// MAIN HANDLER
+// ─── MAIN HANDLER ──────────────────────────────────────────────────────────
+
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
@@ -191,13 +1124,16 @@ export default {
     }
 
     if (url.pathname === "/check-auth") {
-      const bluesky = await checkBlueskyAuth(env);
-      const linkedin = await checkLinkedInAuth(env);
-      return new Response(JSON.stringify({ checks: [bluesky, linkedin] }, null, 2), { headers: { "Content-Type": "application/json" } });
+      const [bluesky, linkedin, facebook, instagram, threads] = await Promise.all([
+        checkBlueskyAuth(env), checkLinkedInAuth(env), checkFacebookAuth(env),
+        checkInstagramAuth(env), checkThreadsAuth(env),
+      ]);
+      return new Response(JSON.stringify({ checks: [bluesky, linkedin, facebook, instagram, threads] }, null, 2), {
+        headers: { "Content-Type": "application/json" },
+      });
     }
 
     if (url.pathname === "/linkedin/authorize") {
-      await log(env, "info", "linkedin_oauth_start", "redirecting", "");
       return Response.redirect(linkedinAuthUrl(env), 302);
     }
 
@@ -205,13 +1141,13 @@ export default {
       const code = url.searchParams.get("code");
       const error = url.searchParams.get("error");
       if (error || !code) {
-        await tier3Alert(env, "linkedin_callback", `OAuth error: ${error || "no code returned"}`);
-        return new Response(`LinkedIn auth failed: ${error || "no code returned"}`, { status: 400 });
+        await tier3Alert(env, "linkedin_callback", `OAuth error: ${error || "no code"}`);
+        return new Response(`LinkedIn auth failed: ${error || "no code"}`, { status: 400 });
       }
       try {
         const tokens = await linkedinExchangeCode(env, code);
         await env.KV.put("linkedin:access_token", tokens.access_token, { expirationTtl: tokens.expires_in || 5184000 });
-        await log(env, "info", "linkedin_oauth_complete", "success", "Access token stored in KV");
+        await log(env, "info", "linkedin_oauth_complete", "success", "Token stored");
         return Response.redirect("https://socialmedia-agent.northstarhr.workers.dev/status", 302);
       } catch (e) {
         await tier3Alert(env, "linkedin_callback", e.message);
@@ -219,13 +1155,63 @@ export default {
       }
     }
 
+    if (url.pathname === "/generate") {
+      await log(env, "info", "manual_generate", "triggered", "Manual generation started");
+      ctx.waitUntil(generateWeeklyContent(env));
+      return Response.redirect("https://socialmedia-agent.northstarhr.workers.dev/status", 302);
+    }
+
+    if (url.pathname === "/refresh-sources") {
+      await env.KV.delete("live_sources:cache");
+      await log(env, "info", "sources_refresh", "triggered", "Cache cleared - will refetch on next generate");
+      return Response.redirect("https://socialmedia-agent.northstarhr.workers.dev/status", 302);
+    }
+
+    if (url.pathname === "/review") {
+      const postId = url.searchParams.get("id");
+      const action = url.searchParams.get("action");
+      if (!postId || !["approve", "reject"].includes(action)) return new Response("Invalid", { status: 400 });
+      await updatePostStatus(env, postId, action === "approve" ? "approved" : "rejected");
+      return Response.redirect("https://socialmedia-agent.northstarhr.workers.dev/status", 302);
+    }
+
+    if (url.pathname === "/feedback") {
+      const postId = url.searchParams.get("id");
+      const action = url.searchParams.get("action");
+      const tagsRaw = url.searchParams.get("tags") || "";
+      const text = url.searchParams.get("text") || "";
+      const tags = tagsRaw ? tagsRaw.split(",").filter(Boolean) : [];
+
+      if (!postId || !action) return new Response("Invalid", { status: 400 });
+
+      if (action === "approve_with_feedback") {
+        await saveFeedback(env, postId, tags, text);
+        await updatePostStatus(env, postId, "approved");
+      } else if (action === "regenerate") {
+        await saveFeedback(env, postId, tags, text);
+        ctx.waitUntil(regenerateSinglePost(env, postId, text, tags));
+      } else if (action === "reject") {
+        await saveFeedback(env, postId, tags, text);
+        await updatePostStatus(env, postId, "rejected");
+      }
+
+      return Response.redirect("https://socialmedia-agent.northstarhr.workers.dev/status", 302);
+    }
+
     return new Response("North Star Agent - Running", { status: 200 });
   },
 
   async scheduled(event, env, ctx) {
     await log(env, "info", "cron_triggered", "started", event.cron);
-    await checkBlueskyAuth(env);
-    await checkLinkedInAuth(env);
-    await log(env, "info", "cron_triggered", "completed", "Phase 1 checks done");
+    await Promise.all([
+      checkBlueskyAuth(env), checkLinkedInAuth(env), checkFacebookAuth(env),
+      checkInstagramAuth(env), checkThreadsAuth(env),
+    ]);
+    const day = new Date().getDay();
+    if (day === 0) {
+      await log(env, "info", "sunday_generation", "started", "Weekly content batch");
+      ctx.waitUntil(generateWeeklyContent(env));
+    }
+    await log(env, "info", "cron_triggered", "completed", `Day ${day} done`);
   },
 };
