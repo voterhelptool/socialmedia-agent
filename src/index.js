@@ -1215,7 +1215,9 @@ async function getFacebookPageToken(env) {
     throw new Error("Facebook credentials missing - need FB_PAGE_ACCESS_TOKEN, FB_APP_ID, FB_APP_SECRET");
   }
 
-  // Step 1: Exchange user token for long-lived user token (60 days)
+  const pageId = env.FB_PAGE_ID;
+
+  // Step 1: Exchange short-lived token for long-lived token (60 days)
   const exchangeRes = await fetch(
     `https://graph.facebook.com/oauth/access_token?grant_type=fb_exchange_token&client_id=${appId}&client_secret=${appSecret}&fb_exchange_token=${shortToken}`
   );
@@ -1225,24 +1227,43 @@ async function getFacebookPageToken(env) {
   }
   const exchangeData = await exchangeRes.json();
   if (exchangeData.error) throw new Error(exchangeData.error.message);
-  const longLivedUserToken = exchangeData.access_token;
+  const longLivedToken = exchangeData.access_token;
 
-  // Step 2: Get permanent Page Access Token from page accounts
-  const pageId = env.FB_PAGE_ID;
-  const accountsRes = await fetch(
-    `https://graph.facebook.com/me/accounts?access_token=${longLivedUserToken}`
+  // Step 2: Detect token type by inspecting it first
+  // A Page token has token_type = "page", a User token has token_type = "user"
+  let permanentPageToken;
+
+  const inspectRes = await fetch(
+    `https://graph.facebook.com/debug_token?input_token=${longLivedToken}&access_token=${appId}|${appSecret}`
   );
-  if (!accountsRes.ok) {
-    const err = await accountsRes.text();
-    throw new Error(`Failed to get page accounts: ${err}`);
+  const inspectData = await inspectRes.json();
+  const tokenType = inspectData?.data?.type?.toLowerCase() || "unknown";
+
+  await log(env, "info", "fb_token", "token_type_detected", `Token type: ${tokenType}`);
+
+  if (tokenType === "page") {
+    // Already a page token - verify it works directly
+    const verifyRes = await fetch(
+      `https://graph.facebook.com/v19.0/${pageId}?fields=id,name&access_token=${longLivedToken}`
+    );
+    const verifyData = await verifyRes.json();
+    if (verifyData.error) throw new Error(`Page token invalid: ${verifyData.error.message}`);
+    await log(env, "info", "fb_token", "page_token_verified", `Page: ${verifyData.name}`);
+    permanentPageToken = longLivedToken;
+
+  } else {
+    // User token - get page token from accounts list
+    const accountsRes = await fetch(
+      `https://graph.facebook.com/me/accounts?access_token=${longLivedToken}`
+    );
+    const accountsData = await accountsRes.json();
+    if (accountsData.error) throw new Error(`Accounts lookup failed: ${accountsData.error.message}`);
+
+    const page = accountsData.data?.find(p => p.id === pageId);
+    if (!page) throw new Error(`Page ${pageId} not found. Available: ${JSON.stringify(accountsData.data?.map(p => ({ id: p.id, name: p.name })))}`);
+    permanentPageToken = page.access_token;
+    await log(env, "info", "fb_token", "user_token_path", `Found page: ${page.name}`);
   }
-  const accountsData = await accountsRes.json();
-  if (accountsData.error) throw new Error(accountsData.error.message);
-
-  const page = accountsData.data?.find(p => p.id === pageId);
-  if (!page) throw new Error(`Page ${pageId} not found in accounts. Available: ${JSON.stringify(accountsData.data?.map(p => p.id))}`);
-
-  const permanentPageToken = page.access_token;
 
   // Store in KV with 60-day expiry (we'll refresh at 7 days remaining)
   const expiresAt = new Date(Date.now() + 60 * 24 * 60 * 60 * 1000);
