@@ -21,21 +21,25 @@ const QUICK_TAGS = ["Too formal", "Too vague", "Wrong UDHR article", "Too simila
 // Fetched fresh before each generation run
 
 const PRIMARY_SOURCES = [
+  // ── LIVE NEWS (current events - fetched fresh each run) ──
+  { name: "HR Dive News", url: "https://www.hrdive.com/news/", topic: "hr_news_live" },
+  { name: "EEOC Newsroom", url: "https://www.eeoc.gov/newsroom", topic: "eeoc_live" },
+  { name: "DOL News", url: "https://www.dol.gov/newsroom/releases", topic: "labor_law_live" },
+  { name: "AIHR HR Trends 2026", url: "https://www.aihr.com/blog/hr-trends/", topic: "hr_trends_live" },
+  { name: "Korn Ferry HR Trends", url: "https://www.kornferry.com/insights/featured-topics/leadership/hr-trends-to-watch", topic: "hr_trends_live" },
+  { name: "SHRM News", url: "https://www.shrm.org/topics-tools/news", topic: "hr_news_live" },
+  { name: "NPR Workplace Business", url: "https://www.npr.org/sections/business/", topic: "workplace_news_live" },
+  { name: "HiBob HR Trends 2026", url: "https://www.hibob.com/guides/hr-trends-2026/", topic: "hr_trends_live" },
+  { name: "ADP HR Trends 2026", url: "https://www.adp.com/spark/articles/2026/01/48-state-specific-hr-compliance-changes-for-2026.aspx", topic: "hr_compliance_live" },
+
+  // ── VERIFIED RESEARCH (stable sources) ──
   { name: "UN UDHR", url: "https://www.un.org/en/about-us/universal-declaration-of-human-rights", topic: "human_rights" },
   { name: "ILO Labour Standards", url: "https://www.ilo.org/international-labour-standards", topic: "labour_rights" },
-  { name: "Gallup Global Workplace", url: "https://www.gallup.com/workplace/349484/state-of-the-global-workplace.aspx", topic: "engagement" },
-  { name: "SHRM Workplace Culture", url: "https://www.shrm.org/executive-network/insights/shrm-report-workplace-culture-fosters-employee-retention", topic: "culture" },
-  { name: "MIT Sloan Toxic Culture", url: "https://sloanreview.mit.edu/article/toxic-culture-is-driving-the-great-resignation/", topic: "culture" },
-  { name: "MIT Sloan Toxic Five", url: "https://sloanreview.mit.edu/article/why-every-leader-needs-to-worry-about-toxic-culture/", topic: "culture" },
-  { name: "HBR Psychological Safety", url: "https://hbr.org/2023/02/what-is-psychological-safety", topic: "psychological_safety" },
-  { name: "Brene Brown Dare to Lead", url: "https://brenebrown.com/hubs/dare-to-lead/", topic: "leadership" },
-  { name: "McKinsey Diversity Wins", url: "https://www.mckinsey.com/featured-insights/diversity-and-inclusion/diversity-wins-how-inclusion-matters", topic: "diversity" },
-  { name: "WEF Future of Jobs", url: "https://www.weforum.org/publications/the-future-of-jobs-report-2023/", topic: "workforce" },
-  { name: "MDHR Minnesota", url: "https://mn.gov/mdhr/employers/workplace-rights/", topic: "minnesota" },
-  { name: "Gallup Manager Engagement 2025", url: "https://www.gallup.com/workplace/654911/manager-engagement-record-drop.aspx", topic: "engagement" },
-  { name: "APA Work Wellbeing", url: "https://www.apa.org/topics/healthy-workplaces", topic: "wellbeing" },
-  { name: "Deloitte Human Capital", url: "https://www2.deloitte.com/us/en/insights/focus/human-capital-trends.html", topic: "hr_trends" },
   { name: "ILO Violence Convention", url: "https://www.ilo.org/topics/violence-and-harassment-work", topic: "harassment" },
+  { name: "Gallup Global Workplace", url: "https://www.gallup.com/workplace/349484/state-of-the-global-workplace.aspx", topic: "engagement" },
+  { name: "MIT Sloan Toxic Culture", url: "https://sloanreview.mit.edu/article/why-every-leader-needs-to-worry-about-toxic-culture/", topic: "culture" },
+  { name: "MDHR Minnesota", url: "https://mn.gov/mdhr/employers/workplace-rights/", topic: "minnesota" },
+  { name: "APA Work Wellbeing", url: "https://www.apa.org/topics/healthy-workplaces", topic: "wellbeing" },
 ];
 
 // ─── VERIFIED SOURCE LIBRARY (baseline - always included) ──────────────────
@@ -195,35 +199,47 @@ const HOOK_PATTERNS = {
   story:      'Open with 1-2 sentences describing a recognizable workplace scenario naming the tension. HR professionals must recognize it instantly.',
 };
 
-const BRAND_VOICE_PROMPT = `You are the content writer for North Star Human Rights, a Minnesota-based human rights consulting practice grounded in the Universal Declaration of Human Rights (UDHR).
+const BRAND_VOICE_PROMPT = `You are the content writer for North Star Human Rights, a Minnesota-based human rights consulting practice.
 
-MISSION: Inspire and empower HR professionals, employers, and business leaders to create cultures where every person's dignity is recognized, protected, and upheld as a daily practice.
+MISSION: Inspire and empower HR professionals, employers, and business leaders to create cultures where every person's dignity is recognized, protected, and upheld - not as policy, but as daily practice.
 
-VOICE: Warm, authoritative, never preachy. Plain language - 8th grade reading level. Specific, actionable. Never lectures - invites.
+TODAY'S CONTEXT (April 2026):
+The federal rollback of DEI protections is accelerating. The EEOC under Chair Andrea Lucas rescinded harassment guidance in January 2026, is pursuing reverse discrimination cases, and a new executive order signed March 26 2026 restricts DEI for federal contractors. AI is displacing workers at scale. Return-to-office mandates are spreading. Employers losing $1.3 trillion to attrition in 2026 (HR Digest). This is the environment North Star HR speaks into. We do not shy away. We ground it.
 
-HOOK PHILOSOPHY: First line must stop the scroll. Creates tension, curiosity, or recognition within 10 words. Weak hook kills the post.
+TWO ANCHORING LENSES - APPLY BOTH TO ALMOST EVERY POST:
 
-SOURCE INTEGRITY (non-negotiable):
-- Every statistic MUST come from LIVE SOURCES or VERIFIED LIBRARY provided
-- Every UDHR citation MUST use exact article text from sources
-- ALWAYS name the source explicitly: "According to Gallup..." "MIT Sloan research found..." "Article 23 states..."
-- NEVER invent statistics - if not in sources provided, do not use it
-- Cross-verify: if live source and library conflict, note the discrepancy and use the most recent
+LENS 1 - UDHR (Universal Declaration of Human Rights, UN 1948):
+The UDHR is not political. It is the floor that no executive order can remove. When federal protections are rolled back, UDHR is what remains. Every post connects to a specific UDHR article by number with exact text. The UDHR is the counter-argument to every rollback - cite it as such.
 
-UDHR GROUNDING: Every post ties to a specific article by number. Use exact text from sources.
+LENS 2 - SPEED OF TRUST (Stephen M.R. Covey, Free Press 2006):
+Trust is an economic driver. When trust goes down, speed goes down and costs go up - the Low-Trust Tax. High-trust organizations outperform low-trust ones by 286% in shareholder returns (Watson Wyatt, cited in Covey). Every employer action is a deposit or withdrawal from the trust account of their workforce. The 13 Behaviors are a diagnostic tool for current events:
+Talk Straight - Demonstrate Respect - Create Transparency - Right Wrongs - Show Loyalty - Deliver Results - Get Better - Confront Reality - Clarify Expectations - Listen First - Keep Commitments - Extend Trust
+Ask for each current event: which behavior does this violate? Which is the antidote?
 
-SPEED OF TRUST: Every post demonstrates at least one of Covey's 13 Behaviors through content itself.
+HOW THE LENSES WORK TOGETHER:
+UDHR tells us what rights exist. Covey tells us what trust costs when those rights are violated. Together they give HR professionals a framework that is principled AND practical. Not just "this is wrong" but "here is what it costs your organization and what you can do this week."
 
-ANTI-REPETITION: Every post must be completely distinct - different UDHR article, different statistic, different hook, different angle.
-
-HARD RULES:
-- Never post unverified facts
-- Never make legal claims
+VOICE:
+- Warm, firm, never preachy
+- Speaks to HR professionals as peers, not students
+- Plain language - 8th grade reading level
+- Specific and named - not "research shows" but "Gallup found" or "EEOC announced in February 2026"
+- Humane first - the human being showing up to work Monday is the subject, not the policy
 - Educational only - never legal advice
+- When things are being taken away, name what remains
+
+CONTENT RULES:
+- Every post must reference a CURRENT named development (2025-2026) from live sources
+- Every post ties to a specific UDHR article by number with exact text from the source library
+- Every post applies at least one Covey Trust Behavior as a lens
+- Every statistic sourced and named - never invented
 - End with ONE actionable insight OR ONE genuine question - never both
 - Maximum 2 hashtags
 
-PLATFORM: Bluesky max 300 chars. LinkedIn 200-600 words. Facebook 100-250 words.`;
+PLATFORM FORMATS:
+- Bluesky: 280 chars max. One complete thought. Current event + human implication + question.
+- LinkedIn: 200-600 words. Named current event + UDHR anchor + Covey lens + specific action HR can take.
+- Facebook: 100-250 words. Warm, human story angle. What does this mean for the actual worker?`;
 
 // ─── LOGGING ───────────────────────────────────────────────────────────────
 
@@ -574,30 +590,48 @@ async function getFeedbackLearnings(env) {
 // ─── CONTENT INTELLIGENCE ──────────────────────────────────────────────────
 
 async function researchContentIntelligence(env, liveSourceContext, feedbackContext) {
-  const prompt = `You are a content intelligence researcher for North Star Human Rights.
+  const prompt = `You are the content strategist for North Star Human Rights. It is April 2026.
 
-Based on the LIVE SOURCE DATA and VERIFIED LIBRARY provided, identify what is most relevant and timely for HR professionals and employers this week.
+Using the LIVE SOURCE DATA provided, identify 5 SPECIFIC CURRENT EVENTS or developments from 2025-2026 that North Star HR should be speaking about THIS WEEK. These must be real, named, datable events - not generic topics.
+
+Current context you must draw from:
+- EEOC under Chair Andrea Lucas rescinded harassment guidance January 2026, pursuing reverse discrimination cases
+- Executive order March 26 2026 restricts DEI for federal contractors
+- U.S. v. State of Minnesota DEI case in federal court 2026
+- AI displacing entry-level workers - 82% of boards planning cuts (Korn Ferry 2026)
+- Return-to-office mandates accelerating - 59% in office, only 19% want to be (Korn Ferry 2026)
+- Employers projected to lose $1.3 trillion to attrition in 2026
+- Minnesota HR compliance changes effective 2026 (ADP report)
+- Skills-based hiring rising as credential requirements fall
+
+Apply TWO LENSES to every topic:
+1. UDHR - which specific article speaks to this right now
+2. Speed of Trust (Covey) - which of the 13 Behaviors does this violate or demonstrate
 
 ${feedbackContext}
 
-Return EXACTLY this JSON structure:
+Return EXACTLY this JSON:
 {
   "trending_topics": [
     {
-      "topic": "specific topic title",
-      "angle": "how North Star HR addresses this",
+      "topic": "specific named current event or development",
+      "current_event": "the actual named thing happening right now in 2025-2026",
+      "angle": "how UDHR + Covey reframes this for HR professionals",
       "udhr_article": "Article NUMBER - Name",
+      "covey_behavior": "which of the 13 behaviors applies and how",
       "hook_format": "tension|stat|question|contrarian|story",
-      "covey_behavior": "one of the 13 Trust Behaviors",
-      "why_now": "one sentence on urgency",
-      "suggested_source": "name of source from library or live data"
+      "why_now": "one sentence - what changed recently that makes this urgent",
+      "suggested_source": "specific source from live data or library"
     }
   ],
-  "audience_pain_points": ["pain point 1", "pain point 2", "pain point 3"],
-  "week_theme": "one overarching theme"
+  "audience_pain_points": ["specific current pain point 1", "specific current pain point 2", "specific current pain point 3"],
+  "week_theme": "one overarching theme connecting this weeks posts"
 }
 
-CRITICAL: 5 topics with DIFFERENT UDHR articles, hook formats, and Covey behaviors. No repetition.
+CRITICAL:
+- All 5 topics must reference real 2025-2026 developments - no generic topics
+- Different UDHR articles, hook formats, and Covey behaviors for each
+- The week_theme must connect all 5 topics coherently
 Return ONLY valid JSON. No markdown.`;
 
   const systemPrompt = BRAND_VOICE_PROMPT + "\n\n" + SOURCE_LIBRARY + "\n\n" + liveSourceContext;
@@ -612,14 +646,14 @@ Return ONLY valid JSON. No markdown.`;
     await log(env, "warn", "content_intelligence", "fallback", e.message);
     return {
       trending_topics: [
-        { topic: "Workplace dignity", angle: "UDHR Article 23 grounds HR policy", udhr_article: "Article 23 - Right to Work", hook_format: "tension", covey_behavior: "Talk Straight", why_now: "Foundation of HR practice", suggested_source: "UDHR" },
-        { topic: "Psychological safety", angle: "Article 5 and freedom from degrading treatment", udhr_article: "Article 5 - Freedom from Degrading Treatment", hook_format: "stat", covey_behavior: "Demonstrate Respect", why_now: "Edmondson research", suggested_source: "Edmondson" },
-        { topic: "Low-trust workplace cost", angle: "Trust tax on every organization", udhr_article: "Article 1 - Equal Dignity", hook_format: "contrarian", covey_behavior: "Create Transparency", why_now: "Culture drives attrition", suggested_source: "MIT Sloan" },
-        { topic: "Employee voice", angle: "Article 20 and freedom of association", udhr_article: "Article 20 - Freedom of Association", hook_format: "question", covey_behavior: "Listen First", why_now: "Engagement crisis", suggested_source: "Gallup" },
-        { topic: "Rest and burnout", angle: "Article 24 and workplace wellbeing", udhr_article: "Article 24 - Right to Rest", hook_format: "story", covey_behavior: "Confront Reality", why_now: "Record stress levels", suggested_source: "Gallup" },
+        { topic: "EEOC DEI enforcement 2026", current_event: "EEOC Chair Lucas rescinded harassment guidance January 2026 and signed DEI executive order March 26 2026", angle: "UDHR Article 7 equal protection remains the floor regardless of EEOC enforcement shifts", udhr_article: "Article 7 - Equal Protection", covey_behavior: "Talk Straight - name what changed and what it means", hook_format: "tension", why_now: "March 26 2026 executive order now affecting federal contractors", suggested_source: "EEOC Newsroom" },
+        { topic: "AI job displacement 2026", current_event: "82% of boards planning workforce cuts due to AI per Korn Ferry 2026 CEO survey", angle: "Article 23 right to work meets Covey Clarify Expectations - workers deserve transparency about AI decisions affecting their jobs", udhr_article: "Article 23 - Right to Work", covey_behavior: "Clarify Expectations - workers cannot trust what they cannot see coming", hook_format: "stat", why_now: "AI agentic capabilities accelerating entry-level displacement in 2026", suggested_source: "Korn Ferry HR Trends" },
+        { topic: "Return to office mandates 2026", current_event: "59% of workers now in office full-time but only 19% want to be per Korn Ferry Workforce 2025 survey", angle: "Article 24 right to rest and Covey Listen First - mandates without consultation are trust withdrawals", udhr_article: "Article 24 - Right to Rest and Leisure", covey_behavior: "Listen First - RTO mandates without employee input violate this behavior", hook_format: "contrarian", why_now: "RTO mandates accelerating across industries in 2026", suggested_source: "Korn Ferry HR Trends" },
+        { topic: "Workplace DEI legal landscape 2026", current_event: "U.S. v. State of Minnesota DEI case in federal court 2026 may reach Supreme Court", angle: "Article 2 UDHR rights without discrimination cannot be legislated away - UDHR predates and supersedes executive orders", udhr_article: "Article 2 - Rights Without Discrimination", covey_behavior: "Confront Reality - HR must name what is happening to protect workers", hook_format: "question", why_now: "Federal contractors facing immediate DEI compliance pressure April 2026", suggested_source: "EEOC Newsroom" },
+        { topic: "Skills-based hiring dignity 2026", current_event: "Employers dropping degree requirements as skills-based hiring has strongest implementation rate of all 2026 HR trends per McLean and Co", angle: "Article 26 right to education and Covey Extend Trust - judging people by what they can do honors dignity", udhr_article: "Article 26 - Right to Education", covey_behavior: "Extend Trust - skills-based hiring extends trust to people the credential system excluded", hook_format: "story", why_now: "Skills-based hiring accelerating in 2026 as AI disrupts traditional credentials", suggested_source: "AIHR HR Trends 2026" },
       ],
-      audience_pain_points: ["culture change resistance", "retention challenges", "burnout"],
-      week_theme: "Dignity as a daily practice",
+      audience_pain_points: ["navigating DEI legal uncertainty without abandoning values", "communicating AI workforce changes to employees", "building trust while implementing RTO mandates"],
+      week_theme: "When protections change, dignity does not",
     };
   }
 }
@@ -654,30 +688,33 @@ async function generateBlueskyPost(env, topic, weekIntelligence, feedbackContext
     : "";
 
   // Bluesky is a completely different format - treat it as such
-  const userPrompt = `Write a Bluesky post for North Star Human Rights. Bluesky is like Twitter - short, sharp, complete thoughts only.
+  const currentEvent = topic.current_event || topic.topic;
+  const coveyBehavior = topic.covey_behavior || "Talk Straight";
 
-TOPIC: ${topic.topic}
+  const userPrompt = `Write a Bluesky post for North Star Human Rights. It is April 2026. Bluesky is short-form - one sharp complete thought only.
+
+CURRENT EVENT TO ANCHOR THIS: ${currentEvent}
 UDHR ARTICLE: ${topic.udhr_article}
-SOURCE TO USE: ${topic.suggested_source || "Gallup or SHRM or MIT Sloan"}
-WEEK THEME: ${weekIntelligence?.week_theme || "Dignity as a daily practice"}
+COVEY LENS: "${coveyBehavior}"
+WEEK THEME: ${weekIntelligence?.week_theme || "When protections change, dignity does not"}
 ${feedbackContext}
 ${usedContext}
 
 BLUESKY FORMAT RULES:
-- Maximum 280 characters (leave 20 char buffer from 300 limit)
+- Maximum 280 characters - count every character before returning
 - One complete, self-contained thought - never cut off mid-idea
-- Structure: [Stat or fact from verified source]. [One-line human rights implication]. [One short question or call to action.]
-- Cite source inline naturally: "Gallup found..." or "Per MIT Sloan..." or "Article 23 says..."
-- Must be coherent and meaningful as a standalone post
+- Must name something SPECIFIC and CURRENT - a real named event, law, statistic from 2025-2026
+- Structure: [Named current stat or event]. [UDHR or Covey implication in one line]. [Short question.]
+- Cite source inline: "EEOC announced..." or "Korn Ferry found..." or "Article 23 says..."
 - Warm, direct, never preachy
 
-GOOD EXAMPLE (213 chars):
-"21% of workers globally are engaged at work. Gallup calls it a crisis. Article 23 of the UDHR calls work a human right. Are we treating it like one?"
+GOOD EXAMPLE (226 chars):
+"82% of boards plan AI-driven workforce cuts. Korn Ferry 2026. Article 23 of the UDHR says work is a human right. Replacing people without transparency violates it. What are you telling your team?"
 
-BAD EXAMPLE - do not do this:
-"Workplace dignity matters because when employees feel respected according to the Universal Declaration of Human Rights Article 23 which states that everyone has the right to work in just and favourable conditions..."
+BAD EXAMPLE - too long, too generic:
+"Workplace dignity matters because when employees feel respected according to the Universal Declaration of Human Rights Article 23 which states that..."
 
-Write ONE post that fits entirely within 280 characters and makes complete sense on its own.
+Write ONE post under 280 characters that names something real and current.
 
 Return ONLY:
 {
@@ -733,40 +770,50 @@ async function generatePost(env, platform, category, topic, dayOfWeek, weekIntel
     ? `\nALREADY USED THIS WEEK - DO NOT REPEAT:\n${alreadyUsed.map(u => `- ${u.udhr_article}, topic: ${u.topic}`).join("\n")}\nYour post MUST be completely different.`
     : "";
 
-  const userPrompt = `Generate a ${platform} post for North Star Human Rights.
+  const currentEventContext = topic.current_event
+    ? `CURRENT EVENT TO ANCHOR THIS POST: ${topic.current_event}`
+    : "";
+  const coveyLens = topic.covey_behavior || trustBehavior;
 
-WEEK THEME: ${weekIntelligence?.week_theme || "Dignity as a daily practice"}
-PAIN POINTS: ${(weekIntelligence?.audience_pain_points || []).join(", ")}
+  const userPrompt = `Generate a ${platform} post for North Star Human Rights. It is April 2026.
+
+WEEK THEME: ${weekIntelligence?.week_theme || "When protections change, dignity does not"}
+AUDIENCE PAIN POINTS: ${(weekIntelligence?.audience_pain_points || []).join(", ")}
+${currentEventContext}
 ${feedbackContext}
 ${usedContext}
 
-REQUIREMENTS:
-- Category: ${category}
-- Topic: ${topic.topic}
-- Angle: ${topic.angle}
-- UDHR: ${topic.udhr_article}
-- Trust Behavior (Covey): ${trustBehavior}
-- Hook Format: ${hookFormat}
-- Suggested source: ${topic.suggested_source || "any from sources"}
-- Character limit: ${limit} characters maximum
+TWO LENSES TO APPLY:
+1. UDHR ANCHOR: ${topic.udhr_article} - use exact text from the source library
+2. COVEY LENS: "${coveyLens}" - how does this current event demonstrate or violate this behavior?
 
-HOOK: ${hookInstruction}
+TOPIC: ${topic.topic}
+ANGLE: ${topic.angle}
+HOOK FORMAT: ${hookFormat} - ${hookInstruction}
+SUGGESTED SOURCE: ${topic.suggested_source || "any from sources"}
+CHARACTER LIMIT: ${limit} maximum
 
-SOURCE REQUIREMENT: Use at least one verified statistic or quote. Name it explicitly: "According to Gallup..." "MIT Sloan found..." "Article 23 states..."
+POST STRUCTURE:
+1. Open with a hook that names something REAL and CURRENT - a specific event, named person, named law, or named statistic from 2025-2026
+2. Apply the UDHR article - not as a citation but as the counter-argument or the floor
+3. Apply the Covey lens - what does this cost in trust, or what behavior is the antidote
+4. Close with ONE actionable insight OR ONE genuine question - never both
+
+SOURCE REQUIREMENT: Name your source explicitly. "EEOC Chair Andrea Lucas announced..." "Korn Ferry found in 2026..." "Article 23 of the UDHR states..." Never invent data.
 
 Return ONLY:
 {
-  "hook": "first line only",
+  "hook": "first line only - must name something current and specific",
   "content": "complete post text",
   "udhr_article": "${topic.udhr_article}",
-  "udhr_quote": "exact text or empty",
-  "source_cited": "source name and year",
+  "udhr_quote": "exact text used or empty",
+  "source_cited": "specific source name and year",
   "source_verified": true or false,
-  "trust_behavior": "${trustBehavior}",
+  "trust_behavior": "${coveyLens}",
   "hook_format": "${hookFormat}",
   "character_count": number,
   "readability_grade": number,
-  "review_notes": "one sentence on post strength"
+  "review_notes": "one sentence on what makes this post work"
 }
 
 Return ONLY valid JSON.`;
@@ -1031,7 +1078,6 @@ async function buildStatusPage(env) {
       <td>${p.category_label}</td>
       <td class="preview">
         <strong style="color:#c9a84c">${p.hook || ""}</strong><br>
-        <span style="color:#aaa;font-size:.7rem">${p.content.substring(0, 90)}${p.content.length > 90 ? "..." : ""}</span><br>
         <span style="color:${p.source_verified ? "#4caf82" : "#c94c4c"};font-size:.65rem">
           ${p.source_verified ? "✓" : "⚠"} ${p.source_cited || "No source"}
         </span>
@@ -1040,7 +1086,7 @@ async function buildStatusPage(env) {
       <td>${p.trust_behavior}</td>
       <td style="color:${hookColor(p.hook_score)};font-weight:700">${p.hook_score || "?"}/10${p.hook_improved ? " ↑" : ""}</td>
       <td>
-        <a class="approve" href="/review?id=${encodeURIComponent(p.id)}&action=approve">Approve</a>
+        <button class="view-btn" onclick="openView('${encodeURIComponent(p.id)}')">View</button>
         <button class="feedback-btn" onclick="openFeedback('${encodeURIComponent(p.id)}')">Feedback</button>
       </td>
     </tr>`).join("") :
@@ -1074,6 +1120,7 @@ async function buildStatusPage(env) {
     .auth-link{display:inline-block;margin-top:.5rem;background:#c9a84c;color:#0f0f1a;padding:.3rem .8rem;border-radius:4px;text-decoration:none;font-weight:600;font-size:.75rem}
     .approve{display:inline-block;background:#1a3020;color:#4caf82;border:1px solid #4caf82;padding:.2rem .6rem;border-radius:4px;text-decoration:none;font-size:.75rem;margin-right:.25rem}
     .feedback-btn{background:#1a1a40;color:#c9a84c;border:1px solid #c9a84c;padding:.2rem .6rem;border-radius:4px;font-size:.75rem;cursor:pointer}
+    .view-btn{background:#1a3020;color:#4caf82;border:1px solid #4caf82;padding:.2rem .6rem;border-radius:4px;font-size:.75rem;cursor:pointer;margin-right:.25rem}
     .gen-btn{display:inline-block;background:#c9a84c;color:#0f0f1a;padding:.5rem 1.5rem;border-radius:6px;text-decoration:none;font-weight:700;font-size:.85rem;margin-bottom:1rem}
     .refresh-btn{display:inline-block;background:#1a1a2e;color:#c9a84c;border:1px solid #c9a84c;padding:.35rem 1rem;border-radius:6px;text-decoration:none;font-size:.8rem;margin-bottom:1rem;margin-left:.75rem}
     .pb{font-size:.7rem;padding:.15rem .5rem;border-radius:10px;font-weight:600}
@@ -1144,6 +1191,24 @@ async function buildStatusPage(env) {
 
   <footer>North Star Human Rights | INTEGRITY INTEGRITY INTEGRITY | Slow is smooth. Smooth is fast. | ${new Date().toISOString()}</footer>
 
+  <!-- View Modal - full post reader -->
+  <div class="modal" id="viewModal">
+    <div class="modal-box" style="max-width:640px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem">
+        <h3 id="view-platform-label">Post</h3>
+        <button class="btn-cancel" onclick="closeViewModal()">Close</button>
+      </div>
+      <div id="view-post-content" style="background:#0f0f1a;border:1px solid #2d2d44;border-radius:8px;padding:1.25rem;font-size:.95rem;line-height:1.6;white-space:pre-wrap;word-break:break-word;margin-bottom:1rem;color:#e8e4d9"></div>
+      <div id="view-post-meta" style="font-size:.78rem;color:#666;margin-bottom:1rem;line-height:1.8"></div>
+      <div style="display:flex;gap:.5rem;flex-wrap:wrap">
+        <button class="btn-save" onclick="approveFromView()">Approve</button>
+        <button class="btn-regen" onclick="feedbackFromView()">Feedback / Regenerate</button>
+        <button class="btn-reject" onclick="rejectFromView()">Reject</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Feedback Modal -->
   <div class="modal" id="feedbackModal">
     <div class="modal-box">
       <h3>Post Feedback</h3>
@@ -1156,33 +1221,111 @@ async function buildStatusPage(env) {
         <button class="btn-save" onclick="submitFeedback('approve_with_feedback')">Approve + Feedback</button>
         <button class="btn-regen" onclick="submitFeedback('regenerate')">Regenerate</button>
         <button class="btn-reject" onclick="submitFeedback('reject')">Reject</button>
-        <button class="btn-cancel" onclick="closeModal()">Cancel</button>
+        <button class="btn-cancel" onclick="closeFeedbackModal()">Cancel</button>
       </div>
     </div>
   </div>
 
   <script>
     let selectedTags = [];
-    const posts = ${JSON.stringify(queue.reduce((acc, p) => { acc[encodeURIComponent(p.id)] = p.content; return acc; }, {}))};
+    let currentViewPostId = null;
+
+    const postData = ${JSON.stringify(queue.reduce((acc, p) => {
+      acc[encodeURIComponent(p.id)] = {
+        content: p.content,
+        platform: p.platform,
+        udhr_article: p.udhr_article,
+        udhr_quote: p.udhr_quote || "",
+        source_cited: p.source_cited || "",
+        trust_behavior: p.trust_behavior,
+        hook_score: p.hook_score,
+        review_notes: p.review_notes || "",
+        character_count: p.character_count || p.content.length,
+        scheduled_for: p.scheduled_for,
+        category_label: p.category_label,
+      };
+      return acc;
+    }, {}))};
+
+    // ── View Modal ──
+    function openView(postId) {
+      currentViewPostId = postId;
+      const p = postData[postId];
+      if (!p) return;
+
+      const platformLabel = { bluesky: "Bluesky", linkedin: "LinkedIn", facebook: "Facebook" };
+      document.getElementById('view-platform-label').textContent =
+        (platformLabel[p.platform] || p.platform) + " - " + p.category_label;
+
+      document.getElementById('view-post-content').textContent = p.content;
+
+      const meta = [
+        p.character_count + " characters",
+        "UDHR: " + p.udhr_article,
+        p.udhr_quote ? 'Quote: "' + p.udhr_quote + '"' : "",
+        "Source: " + (p.source_cited || "Unknown"),
+        "Trust behavior: " + p.trust_behavior,
+        "Hook score: " + (p.hook_score || "?") + "/10",
+        p.review_notes ? "Notes: " + p.review_notes : "",
+        "Scheduled: " + p.scheduled_for.replace("T", " ").split(".")[0] + " UTC",
+      ].filter(Boolean).join(" · ");
+
+      document.getElementById('view-post-meta').textContent = meta;
+      document.getElementById('viewModal').classList.add('open');
+    }
+
+    function closeViewModal() {
+      document.getElementById('viewModal').classList.remove('open');
+      currentViewPostId = null;
+    }
+
+    function approveFromView() {
+      if (!currentViewPostId) return;
+      window.location.href = '/review?id=' + currentViewPostId + '&action=approve';
+    }
+
+    function rejectFromView() {
+      if (!currentViewPostId) return;
+      window.location.href = '/review?id=' + currentViewPostId + '&action=reject';
+    }
+
+    function feedbackFromView() {
+      if (!currentViewPostId) return;
+      closeViewModal();
+      openFeedback(currentViewPostId);
+    }
+
+    document.getElementById('viewModal').addEventListener('click', e => {
+      if (e.target === document.getElementById('viewModal')) closeViewModal();
+    });
+
+    // ── Feedback Modal ──
     function openFeedback(postId) {
+      const p = postData[postId];
       document.getElementById('modal-post-id').value = postId;
       document.getElementById('feedback-text').value = '';
-      document.getElementById('modal-original-post').textContent = posts[postId] || '';
+      document.getElementById('modal-original-post').textContent = p ? p.content : '';
       selectedTags = [];
       document.querySelectorAll('.tag').forEach(t => t.classList.remove('selected'));
       document.getElementById('feedbackModal').classList.add('open');
     }
-    function closeModal() { document.getElementById('feedbackModal').classList.remove('open'); }
+
+    function closeFeedbackModal() { document.getElementById('feedbackModal').classList.remove('open'); }
+
     function toggleTag(btn, tag) {
       btn.classList.toggle('selected');
       selectedTags = selectedTags.includes(tag) ? selectedTags.filter(t => t !== tag) : [...selectedTags, tag];
     }
+
     function submitFeedback(action) {
       const postId = document.getElementById('modal-post-id').value;
       const text = document.getElementById('feedback-text').value;
       window.location.href = '/feedback?id=' + postId + '&action=' + action + '&tags=' + encodeURIComponent(selectedTags.join(',')) + '&text=' + encodeURIComponent(text);
     }
-    document.getElementById('feedbackModal').addEventListener('click', e => { if (e.target === document.getElementById('feedbackModal')) closeModal(); });
+
+    document.getElementById('feedbackModal').addEventListener('click', e => {
+      if (e.target === document.getElementById('feedbackModal')) closeFeedbackModal();
+    });
   </script>
 </body>
 </html>`;
