@@ -174,13 +174,13 @@ Minnesota Department of Human Rights. mn.gov/mdhr
 `;
 
 const CONTENT_SCHEDULE = {
-  1: { category: "udhr_spotlight",      label: "UDHR Article Spotlight",       format: "stat",        platforms: ["bluesky", "linkedin", "facebook"] },
-  2: { category: "workplace_rights",    label: "Workplace Rights in Practice", format: "story",       platforms: ["linkedin", "facebook"] },
-  3: { category: "rights_in_news",      label: "Human Rights in the News",     format: "tension",     platforms: ["bluesky", "linkedin", "facebook"] },
-  4: { category: "community_resource",  label: "Community Resource",           format: "question",    platforms: ["facebook"] },
-  5: { category: "trust_in_action",     label: "Speed of Trust in Action",     format: "contrarian",  platforms: ["linkedin", "bluesky"] },
-  6: { category: "engagement_question", label: "Engagement Question",          format: "question",    platforms: ["bluesky", "linkedin", "facebook"] },
-  0: { category: "generate",            label: "Generate next week content",   format: null,          platforms: [] },
+  1: { category: "udhr_spotlight",      label: "UDHR Article Spotlight",       format: "contrast",     platforms: ["bluesky", "linkedin", "facebook"] },
+  2: { category: "workplace_rights",    label: "Workplace Rights in Practice", format: "relatability", platforms: ["linkedin", "facebook"] },
+  3: { category: "rights_in_news",      label: "Human Rights in the News",     format: "curiosity",    platforms: ["bluesky", "linkedin", "facebook"] },
+  4: { category: "community_resource",  label: "Community Resource",           format: "confession",   platforms: ["facebook"] },
+  5: { category: "trust_in_action",     label: "Speed of Trust in Action",     format: "bold_claim",   platforms: ["linkedin", "bluesky"] },
+  6: { category: "engagement_question", label: "Engagement Question",          format: "curiosity",    platforms: ["bluesky", "linkedin", "facebook"] },
+  0: { category: "generate",            label: "Generate next week content",   format: null,           platforms: [] },
 };
 
 const PLATFORM_LIMITS = { bluesky: 300, linkedin: 3000, facebook: 800 };
@@ -191,13 +191,20 @@ const TRUST_BEHAVIORS = [
   "Clarify Expectations", "Listen First", "Keep Commitments", "Extend Trust",
 ];
 
+// Motion's 5 psychological hook triggers - applied with integrity gate
+// Rule: When in doubt, do not use the hook. A plain true statement beats an overpromising hook.
 const HOOK_PATTERNS = {
-  tension:    'Open with contrast between common practice and human rights standard. "Most [organizations] say [X]. [UDHR Article N] tells a different story."',
-  stat:       'Open with a specific verified statistic from sources. "[Number]. [One sentence on why this is a human rights or dignity issue]."',
-  question:   'Open with a specific question your audience has never been asked about dignity, rights, or culture.',
-  contrarian: 'Challenge a widely held belief. "[Common belief] is not [what people think]. Here is what actually [creates change]."',
-  story:      'Open with 1-2 sentences describing a recognizable workplace scenario naming the tension. HR professionals must recognize it instantly.',
+  confession:   'Open with a genuine admission about how HR or employers have failed workers. Must be true, earned, and grounded in a real pattern - not manufactured humility. Example: "We built DEI programs on federal protections. Now those protections are being dismantled. We built on sand."',
+  bold_claim:   'Open with a single provocative but fully defensible claim. Must be backed by a named source from 2025-2026. If you cannot name the source in the post body, do not use this hook. Example: "The UDHR is more durable than the EEOC right now. Here is why."',
+  relatability: 'Open by naming the exact situation an HR professional is living this week. Must reflect something real and current - not a composite or stereotype. Example: "Your DEI program is legal. Your EEOC disagrees. Your employees are watching what you do next."',
+  contrast:     'Open with a before/after, then/now, or shrinking/stable contrast. Both sides must be factually accurate and sourced. Example: "Federal harassment protections: rescinded January 2026. Article 5 of the UDHR: unchanged since 1948."',
+  curiosity:    'Open a specific knowledge gap the post body fully closes. Never a false cliffhanger. The answer must exist in the post. Example: "There is a federal court case in Minnesota right now that could redefine DEI law for every US employer."',
 };
+
+// Hook integrity gate - applied before any hook is used
+// A hook fails if: (1) any implied claim cannot be verified, (2) the post body cannot pay off the promise, (3) North Star HR has not earned the standing to make it
+// Default when in doubt: skip the hook type and open with a plain factual statement
+const HOOK_INTEGRITY_PROMPT = "Before finalizing the hook, apply this integrity gate: (1) TRUTHFUL - Can every implied claim be verified from sources? If not, rewrite as a plain factual opening. (2) PAYABLE - Does the post body fully deliver on what the hook promises? If not, rewrite. (3) EARNED - Does North Star HR have standing to make this hook? Confession requires real pattern. Bold Claim requires named 2025-2026 source. Relatability requires genuinely current situation. IF IN DOUBT - use a plain factual opening. A true statement that underwhelms beats a hook that overpromises.";
 
 const BRAND_VOICE_PROMPT = `You are the content writer for North Star Human Rights, a Minnesota-based human rights consulting practice.
 
@@ -663,18 +670,32 @@ Return ONLY valid JSON. No markdown.`;
 async function scoreHook(env, hookText, hookFormat, platform) {
   try {
     const result = await callClaude(env,
-      "You are a social media hook expert. Return only valid JSON.",
-      `Score this hook 1-10 for North Star Human Rights.
+      "You are a social media hook expert and integrity reviewer. Return only valid JSON.",
+      `Score this hook 1-10 for North Star Human Rights using Motion's 5 psychological triggers.
+
 HOOK: "${hookText}"
-FORMAT: ${hookFormat} | PLATFORM: ${platform} | AUDIENCE: HR professionals, employers
+TYPE: ${hookFormat} | PLATFORM: ${platform} | AUDIENCE: HR professionals, employers
 
-Criteria: stops scroll (0-3), specific (0-2), warm/authoritative (0-2), earns read (0-2), platform-fit (0-1)
+SCORING CRITERIA:
+- Stops the scroll and creates a psychological pull (0-3 pts)
+- Specific and current - names real events, people, laws, data from 2025-2026 (0-2 pts)
+- Warm and authoritative - peer voice, never preachy (0-2 pts)
+- Pays off - the post can fully deliver on what this hook promises (0-2 pts)
+- Platform appropriate length and tone (0-1 pt)
 
-Return ONLY: {"score": number, "weakness": "one sentence or empty", "stronger_version": "rewrite if below 7 or empty"}`
+INTEGRITY GATE (automatic fail conditions - score must be 0 if any apply):
+- Hook implies a claim that cannot be verified from sourced data
+- Hook opens a curiosity gap the post body cannot close
+- Hook feels performative rather than earned (especially for confession type)
+- Hook exaggerates or overpromises
+
+WHEN IN DOUBT: A lower score is correct. A plain true statement that scores 6 beats an overpromising hook that scores 9.
+
+Return ONLY: {"score": number, "integrity_pass": true or false, "weakness": "one sentence or empty string if score 8+", "stronger_version": "rewrite if below 7, empty if 7+"}`
     );
     return JSON.parse(result.replace(/```json|```/g, "").trim());
   } catch (e) {
-    return { score: 7, weakness: "", stronger_version: "" };
+    return { score: 6, integrity_pass: true, weakness: "", stronger_version: "" };
   }
 }
 
@@ -799,6 +820,9 @@ POST STRUCTURE:
 3. Apply the Covey lens - what does this cost in trust, or what behavior is the antidote
 4. Close with ONE actionable insight OR ONE genuine question - never both
 
+HOOK INTEGRITY GATE - apply before writing the hook:
+${HOOK_INTEGRITY_PROMPT}
+
 SOURCE REQUIREMENT: Name your source explicitly. "EEOC Chair Andrea Lucas announced..." "Korn Ferry found in 2026..." "Article 23 of the UDHR states..." Never invent data.
 
 Return ONLY:
@@ -825,7 +849,7 @@ Return ONLY valid JSON.`;
 
 // ─── QUALITY GATE ──────────────────────────────────────────────────────────
 
-function qualityCheck(post, platform) {
+function qualityCheck(post, platform, hookScore = null) {
   const limit = PLATFORM_LIMITS[platform];
   const issues = [];
   if (!post.content) issues.push("No content");
@@ -834,6 +858,8 @@ function qualityCheck(post, platform) {
   if (!post.udhr_article) issues.push("No UDHR article");
   if (!post.hook) issues.push("No hook");
   if (!post.source_cited) issues.push("No source cited");
+  // Integrity gate - hook failed integrity check
+  if (hookScore && hookScore.integrity_pass === false) issues.push("Hook failed integrity gate - overpromises or unverifiable");
   return { passed: issues.length === 0, issues };
 }
 
@@ -866,10 +892,13 @@ async function generateWeeklyContent(env) {
           let post = await generatePost(env, platform, schedule.category, topic, day, intelligence, feedbackContext, alreadyUsed, liveSourceContext);
           let quality = qualityCheck(post, platform);
 
-          if (!quality.passed) {
-            await log(env, "warn", "quality_fail", platform, `Day ${day}: ${quality.issues.join(", ")} - retrying`);
+          const hookScore = await scoreHook(env, post.hook || post.content.split(".")[0], post.hook_format, platform);
+
+          if (!quality.passed || hookScore.integrity_pass === false) {
+            await log(env, "warn", "quality_fail", platform, `Day ${day}: ${quality.issues.join(", ")} integrity:${hookScore.integrity_pass} - retrying`);
             post = await generatePost(env, platform, schedule.category, topic, day + 1, intelligence, feedbackContext, alreadyUsed, liveSourceContext);
-            quality = qualityCheck(post, platform);
+            const retryHookScore = await scoreHook(env, post.hook || post.content.split(".")[0], post.hook_format, platform);
+            quality = qualityCheck(post, platform, retryHookScore);
             if (!quality.passed) {
               await tier3Alert(env, "content_generation", `Quality failed twice: ${platform} day ${day}: ${quality.issues.join(", ")}`);
               failed++;
@@ -877,7 +906,6 @@ async function generateWeeklyContent(env) {
             }
           }
 
-          const hookScore = await scoreHook(env, post.hook || post.content.split("\n")[0], post.hook_format, platform);
           if (hookScore.score < HOOK_SCORE_MINIMUM && hookScore.stronger_version) {
             const oldHook = post.hook || post.content.split("\n")[0];
             post.content = post.content.replace(oldHook, hookScore.stronger_version);
