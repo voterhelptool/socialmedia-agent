@@ -1309,12 +1309,14 @@ async function buildStatusPage(env) {
 
     function approveFromView() {
       if (!currentViewPostId) return;
-      window.location.href = '/review?id=' + currentViewPostId + '&action=approve';
+      const postId = decodeURIComponent(currentViewPostId);
+      window.location.href = '/review?id=' + encodeURIComponent(postId) + '&action=approve';
     }
 
     function rejectFromView() {
       if (!currentViewPostId) return;
-      window.location.href = '/review?id=' + currentViewPostId + '&action=reject';
+      const postId = decodeURIComponent(currentViewPostId);
+      window.location.href = '/review?id=' + encodeURIComponent(postId) + '&action=reject';
     }
 
     function feedbackFromView() {
@@ -1346,9 +1348,9 @@ async function buildStatusPage(env) {
     }
 
     function submitFeedback(action) {
-      const postId = document.getElementById('modal-post-id').value;
+      const postId = decodeURIComponent(document.getElementById('modal-post-id').value);
       const text = document.getElementById('feedback-text').value;
-      window.location.href = '/feedback?id=' + postId + '&action=' + action + '&tags=' + encodeURIComponent(selectedTags.join(',')) + '&text=' + encodeURIComponent(text);
+      window.location.href = '/feedback?id=' + encodeURIComponent(postId) + '&action=' + action + '&tags=' + encodeURIComponent(selectedTags.join(',')) + '&text=' + encodeURIComponent(text);
     }
 
     document.getElementById('feedbackModal').addEventListener('click', e => {
@@ -1845,7 +1847,7 @@ export default {
     }
 
     if (url.pathname === "/review") {
-      const postId = url.searchParams.get("id");
+      const postId = decodeURIComponent(url.searchParams.get("id") || "");
       const action = url.searchParams.get("action");
       if (!postId || !["approve", "reject"].includes(action)) return new Response("Invalid", { status: 400 });
       await updatePostStatus(env, postId, action === "approve" ? "approved" : "rejected");
@@ -1853,7 +1855,7 @@ export default {
     }
 
     if (url.pathname === "/feedback") {
-      const postId = url.searchParams.get("id");
+      const postId = decodeURIComponent(url.searchParams.get("id") || "");
       const action = url.searchParams.get("action");
       const tagsRaw = url.searchParams.get("tags") || "";
       const text = url.searchParams.get("text") || "";
