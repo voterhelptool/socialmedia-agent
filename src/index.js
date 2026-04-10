@@ -1321,8 +1321,9 @@ async function buildStatusPage(env) {
 
     function feedbackFromView() {
       if (!currentViewPostId) return;
+      const savedId = currentViewPostId;
       closeViewModal();
-      openFeedback(currentViewPostId);
+      openFeedback(savedId);
     }
 
     document.getElementById('viewModal').addEventListener('click', e => {
