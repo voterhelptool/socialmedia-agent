@@ -518,7 +518,57 @@ async function checkThreadsAuth(env) {
 
 // ─── CLAUDE API ────────────────────────────────────────────────────────────
 
+// ── OWNER LOCK ─────────────────────────────────────────────
+// Every route except the LinkedIn OAuth callback needs the owner password.
+// The browser shows its own login box (HTTP Basic auth); the password goes
+// in a header, never in a link. No visitor IPs are read or stored.
+async function sha256Bytes(text) {
+  return new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(String(text))));
+}
+async function requireOwner(request, env) {
+  const pw = env.OWNER_PASSWORD || "";
+  if (pw.length < 16) {
+    console.error("[AUTH] OWNER_PASSWORD missing or under 16 chars - all routes locked");
+    return new Response("Locked: OWNER_PASSWORD not set", { status: 503 });
+  }
+  const lockKey = "auth:fail:" + new Date().toISOString().slice(0, 13);
+  const fails = parseInt(await env.KV.get(lockKey) || "0", 10);
+  if (fails >= 20) return new Response("Too many failed logins. Try again next hour.", { status: 429 });
+  const h = request.headers.get("Authorization") || "";
+  let given = "";
+  if (h.startsWith("Basic ")) {
+    try { const d = atob(h.slice(6)); given = d.slice(d.indexOf(":") + 1); } catch {}
+  }
+  const [a, b] = await Promise.all([sha256Bytes(given), sha256Bytes(pw)]);
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a[i] ^ b[i];
+  if (given && diff === 0) return null;
+  if (given) await env.KV.put(lockKey, String(fails + 1), { expirationTtl: 7200 });
+  return new Response("Login required", {
+    status: 401,
+    headers: { "WWW-Authenticate": 'Basic realm="socialmedia-agent", charset="UTF-8"', "Cache-Control": "no-store" }
+  });
+}
+
+// ── GENERATION LOCK ────────────────────────────────────────
+// A full weekly generation can start at most once every 12 hours.
+async function startGeneration(env, ctx, source) {
+  if (await env.KV.get("generate:lock")) {
+    await log(env, "warn", "generate_blocked", source, "Generation already ran in the last 12 hours");
+    return false;
+  }
+  await env.KV.put("generate:lock", new Date().toISOString(), { expirationTtl: 43200 });
+  ctx.waitUntil(generateWeeklyContent(env));
+  return true;
+}
+
 async function callClaude(env, systemPrompt, userPrompt) {
+  // Daily spending cap. Default 80 calls/day (one full week of posts uses ~60 at most).
+  const capKey = "claude_calls:" + new Date().toISOString().slice(0, 10);
+  const used = parseInt(await env.KV.get(capKey) || "0", 10);
+  const cap = parseInt(env.CLAUDE_DAILY_CAP || "80", 10);
+  if (used >= cap) throw new Error("Daily Claude call cap reached (" + cap + ")");
+  await env.KV.put(capKey, String(used + 1), { expirationTtl: 172800 });
   const apiKey = env.CLAUDE_API_KEY;
   if (!apiKey) throw new Error("CLAUDE_API_KEY missing");
   const res = await fetch("https://api.anthropic.com/v1/messages", {
@@ -1760,6 +1810,10 @@ async function dispatchApprovedPosts(env) {
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
+    if (url.pathname !== "/linkedin/callback") {
+      const denied = await requireOwner(request, env);
+      if (denied) return denied;
+    }
 
     if (url.pathname === "/" || url.pathname === "/status") {
       await log(env, "info", "status_page_viewed", "served", request.headers.get("cf-connecting-ip") || "unknown");
@@ -1800,7 +1854,7 @@ export default {
 
     if (url.pathname === "/generate") {
       await log(env, "info", "manual_generate", "triggered", "Manual generation started");
-      ctx.waitUntil(generateWeeklyContent(env));
+      await startGeneration(env, ctx, "manual");
       return Response.redirect("https://socialmedia-agent.northstarhr.workers.dev/status", 302);
     }
 
@@ -1903,7 +1957,7 @@ export default {
     const day = new Date().getDay();
     if (day === 0) {
       await log(env, "info", "sunday_generation", "started", "Weekly content batch");
-      ctx.waitUntil(generateWeeklyContent(env));
+      await startGeneration(env, ctx, "sunday_cron");
     }
     await log(env, "info", "cron_triggered", "completed", `Day ${day} done`);
   },
